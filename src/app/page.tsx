@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { LineChart, GitCompareArrows, UploadCloud, Pyramids } from "lucide-react";
+import { LineChart, GitCompareArrows, UploadCloud, Pyramid } from "lucide-react";
 import Link from "next/link";
 
 export default function Home() {
@@ -30,7 +30,7 @@ export default function Home() {
 
   return (
     <div className="flex flex-col items-center justify-center text-center py-12">
-      <Pyramids className="h-24 w-24 text-primary mb-6" />
+      <Pyramid className="h-24 w-24 text-primary mb-6" />
       <h1 className="text-5xl font-bold font-headline mb-4">
         CPython Memory Insights
       </h1>
