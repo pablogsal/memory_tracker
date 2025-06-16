@@ -54,6 +54,13 @@ async def startup_event():
     await create_tables()
 
 
+# Health check endpoint
+@app.get("/health")
+async def health_check():
+    """Health check endpoint for Docker health checks."""
+    return {"status": "healthy", "timestamp": datetime.now().isoformat()}
+
+
 # Authentication
 security = HTTPBearer(auto_error=False)
 

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, Suspense } from 'react';
 import {
   Table,
   TableBody,
@@ -48,7 +48,7 @@ import CommitTooltipContent from '@/components/diff/CommitTooltipContent';
 type SortField = 'benchmark_name' | 'high_watermark_delta_percent' | 'total_allocated_delta_percent';
 type SortDirection = 'asc' | 'dsc';
 
-export default function DiffTablePage() {
+function DiffTableContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const [commits, setCommits] = useState<Commit[]>([]);
@@ -661,5 +661,19 @@ export default function DiffTablePage() {
         </Card>
       </div>
     </TooltipProvider>
+  );
+}
+
+export default function DiffTablePage() {
+  return (
+    <Suspense fallback={
+      <div className="space-y-6">
+        <h1 className="text-3xl font-bold font-headline">Inspect Run Results</h1>
+        <Card><CardHeader><CardTitle>Filters</CardTitle></CardHeader><CardContent><div className="h-48 animate-pulse bg-muted rounded-md"></div></CardContent></Card>
+        <Card><CardHeader><CardTitle>Results Table</CardTitle></CardHeader><CardContent><div className="h-96 animate-pulse bg-muted rounded-md"></div></CardContent></Card>
+      </div>
+    }>
+      <DiffTableContent />
+    </Suspense>
   );
 }

@@ -2,12 +2,12 @@ FROM node:18-alpine AS base
 
 # Install dependencies only when needed
 FROM base AS deps
-RUN apk add --no-cache libc6-compat
+RUN apk add --no-cache libc6-compat wget
 WORKDIR /app
 
 # Copy package files
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci
 
 # Rebuild the source code only when needed
 FROM base AS builder
@@ -28,10 +28,13 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 
+RUN apk add --no-cache wget
+
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
-COPY --from=builder /app/public ./public
+# Create empty public directory (Next.js app doesn't have one)
+RUN mkdir -p ./public
 
 # Set the correct permission for prerender cache
 RUN mkdir .next

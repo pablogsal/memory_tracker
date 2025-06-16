@@ -100,7 +100,7 @@ class AuthToken(Base):
     token = Column(String(64), unique=True, nullable=False, index=True)  # SHA-256 hex = 64 chars
     name = Column(String(255), nullable=False)  # Human-readable name for the token
     description = Column(Text, nullable=True)  # Optional description
-    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(UTC))
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     last_used = Column(DateTime, nullable=True)  # Track when token was last used
     is_active = Column(Boolean, nullable=False, default=True)  # Allow disabling tokens
     

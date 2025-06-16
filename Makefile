@@ -35,7 +35,7 @@ dev:
 
 dev-backend:
 	@echo "Starting backend development server..."
-	cd backend && python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+	cd backend && python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 --log-level info
 
 dev-frontend:
 	@echo "Starting frontend development server..."

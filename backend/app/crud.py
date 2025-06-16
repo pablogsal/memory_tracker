@@ -369,7 +369,7 @@ async def create_auth_token(db: AsyncSession, token: str, name: str, description
         token=token,
         name=name,
         description=description,
-        created_at=datetime.now(UTC)
+        created_at=datetime.utcnow()
     )
     db.add(db_token)
     await db.commit()
@@ -384,7 +384,7 @@ async def update_token_last_used(db: AsyncSession, token: str) -> None:
     )
     auth_token = result.scalars().first()
     if auth_token:
-        auth_token.last_used = datetime.now(UTC)
+        auth_token.last_used = datetime.utcnow()
         await db.commit()
 
 

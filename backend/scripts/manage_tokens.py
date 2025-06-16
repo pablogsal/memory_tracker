@@ -299,10 +299,10 @@ async def show_token_details(token_id: int) -> None:
             
             # Calculate usage statistics
             if token.last_used:
-                time_since_last_use = datetime.now(UTC) - token.last_used
+                time_since_last_use = datetime.utcnow() - token.last_used
                 print(f"Time Since Last Use: {time_since_last_use}")
             
-            token_age = datetime.now(UTC) - token.created_at
+            token_age = datetime.utcnow() - token.created_at
             print(f"Token Age: {token_age}")
             
             # Show partial token for verification (first 8 and last 4 characters)
@@ -334,7 +334,7 @@ async def show_token_analytics() -> None:
             used_tokens = used_result.scalar()
             
             # Get recent activity (last 30 days)
-            thirty_days_ago = datetime.now(UTC) - timedelta(days=30)
+            thirty_days_ago = datetime.utcnow() - timedelta(days=30)
             recent_result = await db.execute(
                 select(func.count(models.AuthToken.id)).where(
                     models.AuthToken.last_used >= thirty_days_ago
@@ -390,7 +390,7 @@ async def show_token_analytics() -> None:
             never_used = total_tokens - used_tokens
             last_week = await db.execute(
                 select(func.count(models.AuthToken.id)).where(
-                    models.AuthToken.last_used >= (datetime.now(UTC) - timedelta(days=7))
+                    models.AuthToken.last_used >= (datetime.utcnow() - timedelta(days=7))
                 )
             )
             last_week_count = last_week.scalar()
@@ -411,7 +411,7 @@ async def cleanup_old_tokens(days: int = 90, dry_run: bool = True) -> None:
     """Clean up unused tokens older than specified days."""
     await create_tables()
     
-    cutoff_date = datetime.now(UTC) - timedelta(days=days)
+    cutoff_date = datetime.utcnow() - timedelta(days=days)
     
     async with AsyncSessionLocal() as db:
         try:
