@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState, useMemo, useEffect } from 'react';
@@ -16,9 +17,9 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { GitCompareArrows, Download, ArrowUpDown, Filter, AlertCircle, Info } from 'lucide-react';
-import type { DiffTableRow, MetricKey, PythonVersionFilterOption, Commit } from '@/lib/types';
-import { getMockDiffTableRows, mockBinaries, mockCommits, mockPythonVersionOptions } from '@/lib/mockData';
+import { GitCompareArrows, Download, ArrowUpDown, Filter, AlertCircle, Info, Code2 } from 'lucide-react';
+import type { DiffTableRow, MetricKey, Commit } from '@/lib/types';
+import { getMockDiffTableRows, mockBinaries, mockCommits } from '@/lib/mockData';
 import { METRIC_OPTIONS } from '@/lib/types';
 import CommitTooltipContent from '@/components/diff/CommitTooltipContent';
 
@@ -29,9 +30,6 @@ export default function DiffTablePage() {
   const [filterBenchmarkName, setFilterBenchmarkName] = useState('');
   const [selectedCommitSha, setSelectedCommitSha] = useState<string | undefined>(mockCommits[0]?.sha); 
   const [selectedBinaryId, setSelectedBinaryId] = useState<string | undefined>(mockBinaries[0]?.id);
-  const [selectedPythonVersionKey, setSelectedPythonVersionKey] = useState<string | undefined>(
-    mockPythonVersionOptions[0]?.label
-  );
   const [selectedMetric, setSelectedMetric] = useState<MetricKey>(METRIC_OPTIONS[0].value);
   const [filterThreshold, setFilterThreshold] = useState(0);
   const [showOnlyRegressions, setShowOnlyRegressions] = useState(false);
@@ -44,22 +42,19 @@ export default function DiffTablePage() {
   useEffect(() => setMounted(true), []);
   
   const selectedCommitDetails = useMemo(() => mockCommits.find(c => c.sha === selectedCommitSha), [selectedCommitSha]);
+  const selectedCommitPythonVersion = useMemo(() => selectedCommitDetails?.python_version, [selectedCommitDetails]);
 
   const diffData = useMemo(() => {
-    if (!selectedCommitSha || !selectedBinaryId || !selectedPythonVersionKey || !selectedMetric) {
+    if (!selectedCommitSha || !selectedBinaryId || !selectedMetric || !selectedCommitPythonVersion) {
       return [];
     }
-    const versionOption = mockPythonVersionOptions.find(v => v.label === selectedPythonVersionKey);
-    if (!versionOption) return [];
-
+    // Python version is now derived from the selected commit, no separate filter needed
     return getMockDiffTableRows(
       selectedCommitSha,
       selectedBinaryId,
-      versionOption.major,
-      versionOption.minor,
       selectedMetric
     );
-  }, [selectedCommitSha, selectedBinaryId, selectedPythonVersionKey, selectedMetric]);
+  }, [selectedCommitSha, selectedBinaryId, selectedMetric, selectedCommitPythonVersion]);
 
   const filteredAndSortedData = useMemo(() => {
     let data = [...diffData];
@@ -88,6 +83,7 @@ export default function DiffTablePage() {
           compareB = b.benchmark_name;
           break;
         case 'metric_delta_percent':
+          // Handle undefined for sorting: treat undefined as very small or very large depending on direction
           compareA = a.metric_delta_percent === undefined ? (sortDirection === 'dsc' ? -Infinity : Infinity) : a.metric_delta_percent;
           compareB = b.metric_delta_percent === undefined ? (sortDirection === 'dsc' ? -Infinity : Infinity) : b.metric_delta_percent;
           break;
@@ -123,7 +119,7 @@ export default function DiffTablePage() {
   };
   
   const formatDelta = (delta: number | undefined) => {
-    if (delta === undefined) return 'N/A';
+    if (delta === undefined) return <span className="text-muted-foreground">N/A</span>;
     if (delta === Infinity) return <span className="text-red-600 dark:text-red-400 font-semibold">New (Prev N/A or Zero)</span>;
     const sign = delta > 0 ? '+' : '';
     return `${sign}${delta.toFixed(2)}%`;
@@ -138,7 +134,7 @@ export default function DiffTablePage() {
     if (delta < 0) return 'text-emerald-500 dark:text-emerald-400';
     return 'text-foreground';
   };
-  
+    
   const getPythonVersionDisplay = (versionStr?: string) => {
     return versionStr ? `(py ${versionStr})` : '';
   }
@@ -156,7 +152,7 @@ export default function DiffTablePage() {
       <div className="space-y-6">
         <h1 className="text-3xl font-bold font-headline">Commit Benchmark Comparison</h1>
         <p className="text-muted-foreground">
-          Select a commit to see changes compared to its direct predecessor, for the chosen binary flags and Python version.
+          Select a commit to see changes compared to its direct predecessor (for the same Python major.minor version), using the chosen binary flags.
         </p>
 
         <Card>
@@ -175,23 +171,32 @@ export default function DiffTablePage() {
                     <SelectItem key={commit.sha} value={commit.sha}>
                       <div className="flex items-center gap-2">
                         {commit.sha.substring(0, 7)}
-                        <span className="text-xs text-muted-foreground truncate">({commit.message.substring(0,40)}{commit.message.length > 40 ? '...' : ''})</span>
+                        <span className="text-xs text-muted-foreground truncate">
+                          (py {commit.python_version.major}.{commit.python_version.minor}.{commit.python_version.patch}, {commit.message.substring(0,30)}{commit.message.length > 30 ? '...' : ''})
+                        </span>
                       </div>
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
                {selectedCommitDetails && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button variant="ghost" size="sm" className="mt-1 text-xs px-2 py-1 h-auto text-muted-foreground">
-                      <Info className="h-3 w-3 mr-1" /> View Commit Details
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom" align="start">
-                    <CommitTooltipContent commit={selectedCommitDetails} />
-                  </TooltipContent>
-                </Tooltip>
+                <div className="flex items-center gap-2 mt-1">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button variant="ghost" size="sm" className="text-xs px-2 py-1 h-auto text-muted-foreground">
+                        <Info className="h-3 w-3 mr-1" /> View Commit Details
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom" align="start">
+                      <CommitTooltipContent commit={selectedCommitDetails} />
+                    </TooltipContent>
+                  </Tooltip>
+                  {selectedCommitPythonVersion && (
+                    <span className="text-xs text-muted-foreground flex items-center">
+                      <Code2 className="h-3 w-3 mr-1 text-primary" /> Python {selectedCommitPythonVersion.major}.{selectedCommitPythonVersion.minor}.{selectedCommitPythonVersion.patch}
+                    </span>
+                  )}
+                </div>
               )}
             </div>
 
@@ -206,16 +211,6 @@ export default function DiffTablePage() {
             </div>
             
             <div className="space-y-1">
-              <Label htmlFor="filter-python-version">Python Version (Major.Minor)</Label>
-              <Select value={selectedPythonVersionKey} onValueChange={setSelectedPythonVersionKey}>
-                <SelectTrigger id="filter-python-version"><SelectValue placeholder="Select Python Version" /></SelectTrigger>
-                <SelectContent>
-                  {mockPythonVersionOptions.map(v => <SelectItem key={v.label} value={v.label}>{v.label}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-1">
               <Label htmlFor="metric-select-diff">Metric</Label>
               <Select value={selectedMetric} onValueChange={(val) => setSelectedMetric(val as MetricKey)}>
                 <SelectTrigger id="metric-select-diff"><SelectValue placeholder="Select Metric" /></SelectTrigger>
@@ -224,6 +219,7 @@ export default function DiffTablePage() {
                 </SelectContent>
               </Select>
             </div>
+
             <div className="space-y-1">
               <Label htmlFor="filter-benchmark-name">Benchmark Name</Label>
               <Input id="filter-benchmark-name" placeholder="e.g., pyperformance_go" value={filterBenchmarkName} onChange={e => setFilterBenchmarkName(e.target.value)} />
@@ -232,11 +228,11 @@ export default function DiffTablePage() {
               <Label htmlFor="filter-threshold">Min. Change Threshold (%)</Label>
               <Input id="filter-threshold" type="number" placeholder="e.g., 5" value={filterThreshold} onChange={e => setFilterThreshold(Number(e.target.value))} />
             </div>
-            <div className="flex items-center space-x-2 pt-4 md:col-span-2 lg:col-span-1">
+            <div className="flex items-center space-x-2 pt-4 md:pt-0 lg:pt-4"> {/* Adjusted for layout */}
               <Checkbox id="show-regressions" checked={showOnlyRegressions} onCheckedChange={c => setShowOnlyRegressions(c as boolean)} />
               <Label htmlFor="show-regressions">Only Regressions</Label>
             </div>
-            <div className="flex items-center space-x-2 pt-4 md:col-span-2 lg:col-span-1">
+            <div className="flex items-center space-x-2 pt-4 md:pt-0 lg:pt-4"> {/* Adjusted for layout */}
               <Checkbox id="show-improvements" checked={showOnlyImprovements} onCheckedChange={c => setShowOnlyImprovements(c as boolean)} />
               <Label htmlFor="show-improvements">Only Improvements</Label>
             </div>
@@ -244,18 +240,21 @@ export default function DiffTablePage() {
         </Card>
 
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
+          <CardHeader className="flex flex-row items-start justify-between">
             <div>
               <CardTitle className="flex items-center gap-2">
                 <GitCompareArrows className="h-6 w-6 text-primary" />
                 Comparison Table
               </CardTitle>
-              <CardDescription>
-                Showing {filteredAndSortedData.length} comparisons for commit <Tooltip><TooltipTrigger asChild><span className="font-mono cursor-help">{selectedCommitSha?.substring(0,7)}</span></TooltipTrigger><TooltipContent><CommitTooltipContent commit={selectedCommitDetails} /></TooltipContent></Tooltip> vs. its parent.
-                Metric: {METRIC_OPTIONS.find(m=>m.value === selectedMetric)?.label}.
-                Binary: {mockBinaries.find(b=>b.id === selectedBinaryId)?.name}.
-                Python: {selectedPythonVersionKey}.
-              </CardDescription>
+              {selectedCommitDetails && selectedCommitPythonVersion && (
+                <CardDescription>
+                  Showing {filteredAndSortedData.length} comparisons for commit <Tooltip><TooltipTrigger asChild><span className="font-mono cursor-help">{selectedCommitSha?.substring(0,7)}</span></TooltipTrigger><TooltipContent><CommitTooltipContent commit={selectedCommitDetails} /></TooltipContent></Tooltip> 
+                  (Python {selectedCommitPythonVersion.major}.{selectedCommitPythonVersion.minor}.{selectedCommitPythonVersion.patch}) vs. its parent (if same Python major.minor).
+                  <br />
+                  Metric: {METRIC_OPTIONS.find(m=>m.value === selectedMetric)?.label}.
+                  Binary: {mockBinaries.find(b=>b.id === selectedBinaryId)?.name}.
+                </CardDescription>
+              )}
             </div>
             <Button variant="outline" size="sm" disabled>
               <Download className="mr-2 h-4 w-4" />
@@ -280,13 +279,13 @@ export default function DiffTablePage() {
                       <TableCell className="font-medium">{row.benchmark_name}</TableCell>
                       <TableCell className={`text-right ${getDeltaColor(row.metric_delta_percent)}`}>{formatDelta(row.metric_delta_percent)}</TableCell>
                       <TableCell className="text-right font-mono">
-                        {row.prev_metric_value !== undefined ? row.prev_metric_value.toLocaleString() : 'N/A'}
-                        <span className="text-xs text-muted-foreground ml-1">{getPythonVersionDisplay(row.prev_python_version_str)}</span>
-                        </TableCell>
+                        {row.prev_metric_value !== undefined ? row.prev_metric_value.toLocaleString() : <span className="text-muted-foreground">N/A</span>}
+                        {row.prev_python_version_str && <span className="text-xs text-muted-foreground ml-1">{getPythonVersionDisplay(row.prev_python_version_str)}</span>}
+                      </TableCell>
                       <TableCell className="text-right font-mono">
                         {row.curr_metric_value.toLocaleString()}
                         <span className="text-xs text-muted-foreground ml-1">{getPythonVersionDisplay(row.curr_python_version_str)}</span>
-                        </TableCell>
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -296,7 +295,7 @@ export default function DiffTablePage() {
               <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
                 <AlertCircle className="w-12 h-12 mb-4" />
                 <p className="text-lg">No comparisons match your current filters or data is unavailable.</p>
-                <p className="text-sm">Ensure the selected commit has a predecessor with comparable data for the chosen binary, Python version, and metric.</p>
+                <p className="text-sm">Ensure the selected commit has a predecessor with comparable data for the same Python major.minor version, chosen binary, and metric.</p>
               </div>
             )}
           </CardContent>

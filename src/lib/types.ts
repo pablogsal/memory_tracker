@@ -1,17 +1,18 @@
-export interface Commit {
-  sha: string;
-  timestamp: string; // ISO datetime string
-  message: string;
-  author: string;
-}
-
 export interface PythonVersion {
   major: number;
   minor: number;
   patch: number;
 }
 
-// Represents a set of compilation flags, not a specific Python version instance
+export interface Commit {
+  sha: string;
+  timestamp: string; // ISO datetime string
+  message: string;
+  author: string;
+  python_version: PythonVersion; // Each commit is built FOR a specific Python version
+}
+
+// Represents a set of compilation flags, independent of Python version
 export interface Binary {
   id: string; // e.g., "debug-flags", "no-gil-flags", "default"
   name: string; // User-friendly name, e.g., "Debug Flags", "No GIL"
@@ -22,7 +23,8 @@ export interface Run {
   run_id: string;
   commit_sha: string;
   binary_id: string; // Refers to Binary.id (the identifier for a set of flags)
-  python_version: PythonVersion; // Specific Python version used for this run
+  // The python_version for a run must match the python_version of its commit
+  python_version: PythonVersion; 
   timestamp: string; // ISO datetime string
 }
 
@@ -50,7 +52,7 @@ export interface BenchmarkResult {
 export interface EnrichedBenchmarkResult extends BenchmarkResult {
   commit: Commit;
   binary: Binary; 
-  run_python_version: PythonVersion; 
+  run_python_version: PythonVersion; // This is the run's Python version, which should match commit's
 }
 
 export interface DiffTableRow {
@@ -58,10 +60,11 @@ export interface DiffTableRow {
   metric_delta_percent?: number; 
   prev_metric_value?: number;
   curr_metric_value: number;
-  prev_commit_details?: Commit;
-  curr_commit_details: Commit;
+  curr_commit_details: Commit; // Current commit being analyzed
+  prev_commit_details?: Commit; // Parent commit, if comparable (same major.minor Python version)
   metric_key: keyof BenchmarkResultJson;
-  prev_python_version_str?: string;
+  // Python version strings are for display and derived from the respective commit/run
+  prev_python_version_str?: string; 
   curr_python_version_str: string;
 }
 
@@ -72,6 +75,7 @@ export const METRIC_OPTIONS: { value: MetricKey; label: string }[] = [
   { value: 'total_allocated_bytes', label: 'Total Allocated (Bytes)' },
 ];
 
+// Used for filtering in Trends view, derived from unique major.minor versions in commits
 export interface PythonVersionFilterOption {
   label: string; // e.g., "3.12"
   major: number;

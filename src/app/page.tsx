@@ -1,6 +1,7 @@
+
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { LineChart, GitCompareArrows, Pyramid, ListChecks } from "lucide-react"; 
+import { LineChart, GitCompareArrows, Pyramid, ListChecks } from "lucide-react"; // Removed UploadCloud
 import Link from "next/link";
 
 export default function Home() {
@@ -26,6 +27,13 @@ export default function Home() {
       href: "/binaries",
       cta: "Inspect Binaries",
     },
+    // { // Removed Upload Data feature card
+    //   title: "Upload Data",
+    //   description: "Upload new benchmark results via JSON files for analysis.",
+    //   icon: UploadCloud,
+    //   href: "/upload",
+    //   cta: "Upload Data",
+    // },
   ];
 
   return (

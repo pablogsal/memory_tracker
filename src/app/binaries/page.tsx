@@ -1,3 +1,4 @@
+
 "use client";
 
 import React from 'react';
@@ -5,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Badge } from '@/components/ui/badge';
 import { ListChecks, Cpu } from 'lucide-react';
-import { mockBinaries } from '@/lib/mockData';
+import { mockBinaries } from '@/lib/mockData'; // mockBinaries no longer has a version field
 
 export default function BinariesPage() {
   return (
@@ -14,7 +15,7 @@ export default function BinariesPage() {
         <ListChecks className="h-16 w-16 text-primary mb-4" />
         <h1 className="text-4xl font-bold font-headline">Binary Configurations</h1>
         <p className="text-lg text-muted-foreground mt-2 max-w-xl">
-          Inspect the available binary compilation flag configurations used for benchmark runs.
+          Inspect the available binary compilation flag configurations. These configurations can be applied across different Python versions during benchmark runs.
         </p>
       </div>
 
@@ -26,7 +27,7 @@ export default function BinariesPage() {
               Available Binary Flag Sets
             </CardTitle>
             <CardDescription>
-              Each item represents a unique set of compilation flags that can be applied across different Python versions.
+              Each item represents a unique set of compilation flags.
             </CardDescription>
           </CardHeader>
           <CardContent>

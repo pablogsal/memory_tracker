@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState, useMemo, useEffect } from 'react';
@@ -7,7 +8,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { LineChart as ChartIcon, Download, AlertCircle } from 'lucide-react';
+import { LineChart as ChartIcon, Download, AlertCircle, Code2 } from 'lucide-react';
 import {
   LineChart,
   Line,
@@ -36,7 +37,7 @@ const formatBytes = (bytes: number, decimals = 2) => {
 export default function BenchmarkTrendPage() {
   const [selectedBinaryId, setSelectedBinaryId] = useState<string | undefined>(mockBinaries[0]?.id);
   const [selectedPythonVersionKey, setSelectedPythonVersionKey] = useState<string | undefined>(
-    mockPythonVersionOptions[0]?.label
+    mockPythonVersionOptions[0]?.label // e.g., "3.13"
   );
   const [selectedMetric, setSelectedMetric] = useState<MetricKey>(METRIC_OPTIONS[0].value);
   const [selectedBenchmarks, setSelectedBenchmarks] = useState<string[]>([allBenchmarkNames[0]]);
@@ -51,11 +52,12 @@ export default function BenchmarkTrendPage() {
     const versionOption = mockPythonVersionOptions.find(v => v.label === selectedPythonVersionKey);
     if (!versionOption) return [];
 
+    // Filter results based on selected binary, selected Python major.minor, and selected benchmarks
     return mockEnrichedBenchmarkResults
       .filter(result => 
         result.binary.id === selectedBinaryId &&
-        result.run_python_version.major === versionOption.major &&
-        result.run_python_version.minor === versionOption.minor &&
+        result.commit.python_version.major === versionOption.major && // Match commit's Python major
+        result.commit.python_version.minor === versionOption.minor && // Match commit's Python minor
         selectedBenchmarks.includes(result.benchmark_name)
       )
       .sort((a, b) => new Date(a.commit.timestamp).getTime() - new Date(b.commit.timestamp).getTime());
@@ -67,7 +69,7 @@ export default function BenchmarkTrendPage() {
         commitSha: string, 
         timestamp: string, 
         commitMessage: string,
-        fullVersion?: string, 
+        fullVersion?: string, // Full Python version of the commit/run
         [benchmarkName: string]: any 
       } 
     } = {};
@@ -79,10 +81,12 @@ export default function BenchmarkTrendPage() {
           commitSha: commitSha.substring(0, 7), 
           timestamp: new Date(result.commit.timestamp).toLocaleDateString(),
           commitMessage: result.commit.message,
+          // Use run_python_version for the full version display in tooltip, as it matches the commit's
           fullVersion: `${result.run_python_version.major}.${result.run_python_version.minor}.${result.run_python_version.patch}`
         };
       }
       dataByCommit[commitSha][result.benchmark_name] = result.result_json[selectedMetric];
+      // Ensure all selected benchmarks have an entry (even if undefined) for consistent line rendering
       selectedBenchmarks.forEach(sb => {
         if (!(sb in dataByCommit[commitSha])) {
             dataByCommit[commitSha][sb] = undefined; 
@@ -90,7 +94,9 @@ export default function BenchmarkTrendPage() {
       });
     });
     
+    // Sort by commit timestamp (chronological)
     return Object.values(dataByCommit).sort((a,b) => {
+        // Find original commit objects to sort by their actual timestamp
         const commitA = mockCommits.find(c => c.sha.startsWith(a.commitSha));
         const commitB = mockCommits.find(c => c.sha.startsWith(b.commitSha));
         if (!commitA || !commitB) return 0;
@@ -128,7 +134,7 @@ export default function BenchmarkTrendPage() {
       <Card>
         <CardHeader>
           <CardTitle>Filters</CardTitle>
-          <CardDescription>Select binary flags, Python version, metric, and benchmarks to visualize trends.</CardDescription>
+          <CardDescription>Select binary flags, Python version (Major.Minor), metric, and benchmarks to visualize trends.</CardDescription>
         </CardHeader>
         <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           <div>
@@ -154,9 +160,11 @@ export default function BenchmarkTrendPage() {
                 <SelectValue placeholder="Select Python Version" />
               </SelectTrigger>
               <SelectContent>
-                {mockPythonVersionOptions.map(v => (
+                {mockPythonVersionOptions.map(v => ( // mockPythonVersionOptions is derived from commit versions
                   <SelectItem key={v.label} value={v.label}>
-                    {v.label}
+                    <div className="flex items-center gap-2">
+                       <Code2 className="h-4 w-4 text-primary/80" /> {v.label}
+                    </div>
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -208,7 +216,7 @@ export default function BenchmarkTrendPage() {
       </Card>
 
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
+        <CardHeader className="flex flex-row items-start justify-between">
           <div>
             <CardTitle className="flex items-center gap-2">
               <ChartIcon className="h-6 w-6 text-primary" />
@@ -241,12 +249,16 @@ export default function BenchmarkTrendPage() {
                   formatter={(value: number, name: string, props) => {
                     const displayName = name.replace(/_/g, ' ');
                     const formattedValue = formatBytes(value);
-                    const fullVersion = props.payload.fullVersion ? `(py ${props.payload.fullVersion})` : '';
+                    // props.payload.fullVersion comes from the commit's python_version
+                    const fullVersion = props.payload.fullVersion ? `(py ${props.payload.fullVersion})` : ''; 
                     return [`${formattedValue} ${fullVersion}`, displayName];
                   }}
-                  labelFormatter={(label, payload) => {
-                     const commit = payload?.[0]?.payload;
-                     return commit ? `${commit.commitSha}: ${commit.commitMessage.substring(0,50)}...` : label;
+                  labelFormatter={(label, payload) => { // label is commitSha here
+                     const commitData = payload?.[0]?.payload;
+                     if (commitData) {
+                       return `${commitData.commitSha} (py ${commitData.fullVersion}): ${commitData.commitMessage.substring(0,50)}...`;
+                     }
+                     return label;
                   }}
                   contentStyle={{ backgroundColor: 'hsl(var(--background))', border: '1px solid hsl(var(--border))', borderRadius: 'var(--radius)' }}
                   itemSorter={(item) => selectedBenchmarks.indexOf(item.dataKey as string)}
@@ -270,7 +282,7 @@ export default function BenchmarkTrendPage() {
             <div className="flex flex-col items-center justify-center h-96 text-muted-foreground">
               <AlertCircle className="w-16 h-16 mb-4" />
               <p className="text-lg">No data available for the selected filters.</p>
-              <p>Please select a binary, Python version, metric, and at least one benchmark.</p>
+              <p>Please select a binary, Python version, metric, and at least one benchmark, ensuring commits exist for that Python version.</p>
             </div>
           )}
         </CardContent>

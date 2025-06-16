@@ -1,7 +1,8 @@
+
 "use client";
 
 import Link from 'next/link';
-import { Pyramid, LineChart, GitCompareArrows, ListChecks, Sun, Moon } from 'lucide-react';
+import { Pyramid, LineChart, GitCompareArrows, ListChecks, Sun, Moon } from 'lucide-react'; // Removed UploadCloud
 import { useTheme } from 'next-themes';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
@@ -12,6 +13,7 @@ const navItems = [
   { href: '/trends', label: 'Benchmark Trends', icon: LineChart },
   { href: '/diff', label: 'Diff Table View', icon: GitCompareArrows },
   { href: '/binaries', label: 'Inspect Binaries', icon: ListChecks },
+  // { href: '/upload', label: 'Upload Data', icon: UploadCloud }, // Removed
 ];
 
 export default function Header() {
