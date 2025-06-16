@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { LineChart, GitCompareArrows, UploadCloud, BrainCircuit, Pyramids } from "lucide-react";
+import { LineChart, GitCompareArrows, UploadCloud, Pyramids } from "lucide-react";
 import Link from "next/link";
 
 export default function Home() {
@@ -26,13 +26,6 @@ export default function Home() {
       href: "/upload",
       cta: "Upload Results",
     },
-    {
-      title: "RCA Assistant",
-      description: "AI-powered suggestions for root causes of performance regressions.",
-      icon: BrainCircuit,
-      href: "/rca",
-      cta: "Get Insights",
-    },
   ];
 
   return (
@@ -45,7 +38,7 @@ export default function Home() {
         Analyze memory behavior trends, compare builds and commits, and investigate performance regressions in the CPython project.
       </p>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 w-full max-w-6xl">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 w-full max-w-5xl">
         {features.map((feature) => (
           <Card key={feature.title} className="flex flex-col shadow-lg hover:shadow-xl transition-shadow duration-300">
             <CardHeader className="items-center">
