@@ -1,3 +1,66 @@
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { LineChart, GitCompareArrows, UploadCloud, BrainCircuit, Pyramids } from "lucide-react";
+import Link from "next/link";
+
 export default function Home() {
-  return <></>;
+  const features = [
+    {
+      title: "Benchmark Trends",
+      description: "Visualize memory benchmark trends over time for selected configurations.",
+      icon: LineChart,
+      href: "/trends",
+      cta: "View Trends",
+    },
+    {
+      title: "Diff Table View",
+      description: "Compare benchmark results commit-to-commit, highlighting changes.",
+      icon: GitCompareArrows,
+      href: "/diff",
+      cta: "Analyze Diffs",
+    },
+    {
+      title: "Upload Data",
+      description: "Authenticated interface to upload new benchmark JSON results.",
+      icon: UploadCloud,
+      href: "/upload",
+      cta: "Upload Results",
+    },
+    {
+      title: "RCA Assistant",
+      description: "AI-powered suggestions for root causes of performance regressions.",
+      icon: BrainCircuit,
+      href: "/rca",
+      cta: "Get Insights",
+    },
+  ];
+
+  return (
+    <div className="flex flex-col items-center justify-center text-center py-12">
+      <Pyramids className="h-24 w-24 text-primary mb-6" />
+      <h1 className="text-5xl font-bold font-headline mb-4">
+        CPython Memory Insights
+      </h1>
+      <p className="text-xl text-muted-foreground mb-12 max-w-2xl">
+        Analyze memory behavior trends, compare builds and commits, and investigate performance regressions in the CPython project.
+      </p>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 w-full max-w-6xl">
+        {features.map((feature) => (
+          <Card key={feature.title} className="flex flex-col shadow-lg hover:shadow-xl transition-shadow duration-300">
+            <CardHeader className="items-center">
+              <feature.icon className="h-12 w-12 text-primary mb-3" />
+              <CardTitle className="font-headline text-2xl">{feature.title}</CardTitle>
+            </CardHeader>
+            <CardContent className="flex-grow flex flex-col items-center text-center">
+              <CardDescription className="mb-6 flex-grow">{feature.description}</CardDescription>
+              <Button asChild className="w-full bg-primary hover:bg-primary/90 text-primary-foreground">
+                <Link href={feature.href}>{feature.cta}</Link>
+              </Button>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
 }
