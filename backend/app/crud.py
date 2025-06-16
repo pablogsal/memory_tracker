@@ -150,11 +150,17 @@ async def create_benchmark_result(db: AsyncSession, result: schemas.BenchmarkRes
         allocation_histogram=result.result_json.allocation_histogram,
         total_allocated_bytes=result.result_json.total_allocated_bytes,
         top_allocating_functions=[func.dict() for func in result.result_json.top_allocating_functions],
+        flamegraph_html=result.flamegraph_html,
     )
     db.add(db_result)
     await db.commit()
     await db.refresh(db_result)
     return db_result
+
+
+async def get_benchmark_result_by_id(db: AsyncSession, result_id: str) -> Optional[models.BenchmarkResult]:
+    result = await db.execute(select(models.BenchmarkResult).where(models.BenchmarkResult.id == result_id))
+    return result.scalars().first()
 
 
 async def get_enriched_benchmark_results(

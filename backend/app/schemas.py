@@ -99,6 +99,7 @@ class BenchmarkResultCreate(BaseModel):
     run_id: str
     benchmark_name: str
     result_json: BenchmarkResultJson
+    flamegraph_html: Optional[str] = None
 
 
 class BenchmarkResult(BenchmarkResultBase):
@@ -113,6 +114,19 @@ class EnrichedBenchmarkResult(BenchmarkResult):
     run_python_version: PythonVersion
 
 
+# Worker upload schemas
+class WorkerBenchmarkResult(BaseModel):
+    benchmark_name: str
+    stats_json: Dict[str, Any]  # The memray stats JSON
+    flamegraph_html: str  # The HTML content
+
+class WorkerRunUpload(BaseModel):
+    metadata: Dict[str, Any]  # The metadata.json content
+    benchmark_results: List[WorkerBenchmarkResult]
+    binary_id: str  # Provided by worker
+    environment_id: str  # Provided by worker
+
+
 class DiffTableRow(BaseModel):
     benchmark_name: str
     metric_delta_percent: Optional[float] = None
@@ -123,6 +137,7 @@ class DiffTableRow(BaseModel):
     metric_key: str
     prev_python_version_str: Optional[str] = None
     curr_python_version_str: str
+    curr_result_id: str
 
 
 class PythonVersionFilterOption(BaseModel):

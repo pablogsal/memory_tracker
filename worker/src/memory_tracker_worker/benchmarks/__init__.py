@@ -169,4 +169,64 @@ def run_benchmarks(venv_dir: Path, output_dir: Path, commit: git.Commit) -> None
         # Clean up temporary directory
         if temp_dir.exists():
             shutil.rmtree(temp_dir)
-            logger.debug(f"Cleaned up temporary directory: {temp_dir}") 
+            logger.debug(f"Cleaned up temporary directory: {temp_dir}")
+
+
+def upload_results_to_server(output_dir: Path, binary_id: str, environment_id: str, server_url: str = "http://localhost:8000") -> None:
+    """Upload benchmark results to the server."""
+    logger.info(f"Uploading results from {output_dir} to {server_url}")
+    logger.info(f"Using binary_id: {binary_id}, environment_id: {environment_id}")
+    
+    # Load metadata
+    metadata_file = output_dir / 'metadata.json'
+    if not metadata_file.exists():
+        logger.error(f"Metadata file not found: {metadata_file}")
+        return
+        
+    with open(metadata_file, 'r') as f:
+        metadata = json.load(f)
+    
+    # Collect benchmark results
+    benchmark_results = []
+    for stats_file in output_dir.glob('*_stats.json'):
+        benchmark_name = stats_file.stem.replace('_stats', '')
+        flamegraph_file = output_dir / f"{benchmark_name}_flamegraph.html"
+        
+        # Load stats JSON
+        with open(stats_file, 'r') as f:
+            stats_json = json.load(f)
+        
+        # Load flamegraph HTML
+        flamegraph_html = ""
+        if flamegraph_file.exists():
+            with open(flamegraph_file, 'r') as f:
+                flamegraph_html = f.read()
+        
+        benchmark_results.append({
+            "benchmark_name": benchmark_name,
+            "stats_json": stats_json,
+            "flamegraph_html": flamegraph_html
+        })
+    
+    # Prepare upload payload
+    upload_data = {
+        "metadata": metadata,
+        "benchmark_results": benchmark_results,
+        "binary_id": binary_id,
+        "environment_id": environment_id
+    }
+    
+    # Upload to server
+    try:
+        import requests
+        response = requests.post(f"{server_url}/api/upload-run", json=upload_data, timeout=30)
+        response.raise_for_status()
+        
+        result = response.json()
+        logger.info(f"Successfully uploaded run: {result.get('run_id')}")
+        logger.info(f"Created {result.get('results_created')} benchmark results")
+        logger.info(f"Detected binary: {result.get('binary_id')}, environment: {result.get('environment_id')}")
+        
+    except Exception as e:
+        logger.error(f"Failed to upload results to server: {e}")
+        logger.info(f"Results are still saved locally in: {output_dir}") 

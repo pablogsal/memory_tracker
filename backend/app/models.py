@@ -82,6 +82,7 @@ class BenchmarkResult(Base):
     allocation_histogram = Column(JSON, nullable=False)  # Array of [size, count] tuples
     total_allocated_bytes = Column(Integer, nullable=False)
     top_allocating_functions = Column(JSON, nullable=False)  # Array of function objects
+    flamegraph_html = Column(Text, nullable=True)  # HTML content of the flamegraph
     
     run = relationship("Run", back_populates="benchmark_results")
     

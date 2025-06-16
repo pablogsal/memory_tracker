@@ -126,6 +126,8 @@ def process_commit(
     configure_flags: str,
     make_flags: str,
     verbose: int,
+    binary_id: str,
+    environment_id: str,
 ) -> Optional[str]:
     """Process a single commit."""
     build_dir = None
@@ -277,8 +279,16 @@ def process_commit(
             
             # Run benchmarks
             logger.info(f"Running benchmarks for commit {commit.hexsha[:8]}")
-            from .benchmarks import run_benchmarks
+            from .benchmarks import run_benchmarks, upload_results_to_server
             run_benchmarks(venv_dir, run_dir, commit)
+            
+            # Upload results to server
+            logger.info(f"Uploading results for commit {commit.hexsha[:8]}")
+            try:
+                upload_results_to_server(run_dir, binary_id=binary_id, environment_id=environment_id)
+            except Exception as e:
+                logger.warning(f"Failed to upload results for commit {commit.hexsha[:8]}: {e}")
+                logger.info("Results are still saved locally")
             
             logger.info(f"Successfully completed processing commit {commit.hexsha[:8]}")
             return None
@@ -324,22 +334,20 @@ def parse_args():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Run benchmarks on last 5 commits
-  memory-tracker benchmark HEAD~5..HEAD
+  # Run benchmarks on last 5 commits with optimized binary
+  memory-tracker benchmark HEAD~5..HEAD --binary-id=optimized --environment-id=linux-x86_64
 
-  # Use custom CPython repository
-  memory-tracker benchmark /path/to/cpython HEAD~5..HEAD
+  # Use custom CPython repository  
+  memory-tracker benchmark /path/to/cpython HEAD~5..HEAD --binary-id=debug --environment-id=macos-x86_64
 
   # Custom build flags
-  memory-tracker benchmark /path/to/cpython HEAD~5..HEAD --configure-flags="--enable-optimizations --with-lto" --make-flags="-j8"
+  memory-tracker benchmark /path/to/cpython HEAD~5..HEAD --configure-flags="--enable-optimizations --with-lto" --make-flags="-j8" --binary-id=optimized --environment-id=linux-x86_64
 
   # Custom output directory
-  memory-tracker benchmark /path/to/cpython HEAD~5..HEAD --output-dir="./my_benchmarks"
+  memory-tracker benchmark /path/to/cpython HEAD~5..HEAD --output-dir="./my_benchmarks" --binary-id=default --environment-id=linux-x86_64
 
   # Verbose output
-  memory-tracker benchmark HEAD~5..HEAD -v
-  memory-tracker benchmark HEAD~5..HEAD -vv
-  memory-tracker benchmark HEAD~5..HEAD -vvv
+  memory-tracker benchmark HEAD~5..HEAD --binary-id=optimized --environment-id=linux-x86_64 -v
 """
     )
     
@@ -374,6 +382,16 @@ Examples:
         action='count',
         default=0,
         help='Increase verbosity (can be used multiple times, e.g. -vvv)'
+    )
+    parser.add_argument(
+        '--binary-id',
+        required=True,
+        help='Binary ID to use for this run (e.g., optimized, debug, default)'
+    )
+    parser.add_argument(
+        '--environment-id', 
+        required=True,
+        help='Environment ID to use for this run (e.g., linux-x86_64, macos-x86_64)'
     )
     
     return parser.parse_args()
@@ -470,7 +488,9 @@ def main():
             args.output_dir,
             args.configure_flags,
             args.make_flags,
-            args.verbose
+            args.verbose,
+            args.binary_id,
+            args.environment_id
         )
         if error:
             errors.append((commit, error))

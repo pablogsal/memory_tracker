@@ -245,6 +245,7 @@ async def get_diff_table(
             ),
             "metric_key": metric_key,
             "curr_python_version_str": f"{selected_commit.python_major}.{selected_commit.python_minor}.{selected_commit.python_patch}",
+            "curr_result_id": result.id,
         }
         
         # Try to find previous commit's data for comparison
@@ -288,7 +289,7 @@ async def get_python_versions(db: AsyncSession = Depends(get_database)):
     return [schemas.PythonVersionFilterOption(**version) for version in versions]
 
 
-# Upload benchmark results endpoint
+# Upload benchmark results endpoint (legacy)
 @app.post("/api/upload", response_model=dict)
 async def upload_benchmark_results(
     upload_data: schemas.BenchmarkUpload,
@@ -352,6 +353,162 @@ async def upload_benchmark_results(
     
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to upload benchmark results: {str(e)}")
+
+
+# Worker upload endpoint with auto-detection
+@app.post("/api/upload-run", response_model=dict)
+async def upload_worker_run(
+    upload_data: schemas.WorkerRunUpload,
+    db: AsyncSession = Depends(get_database)
+):
+    metadata = upload_data.metadata
+    
+    # Extract commit information
+    commit_info = metadata.get("commit", {})
+    commit_sha = commit_info.get("hexsha")
+    if not commit_sha:
+        raise HTTPException(status_code=400, detail="Missing commit SHA in metadata")
+    
+    # Extract Python version
+    version_info = metadata.get("version", {})
+    python_version = schemas.PythonVersion(
+        major=version_info.get("major"),
+        minor=version_info.get("minor"),
+        patch=version_info.get("micro", 0)  # 'micro' in metadata maps to 'patch' in our schema
+    )
+    
+    # Use provided binary_id and environment_id from worker
+    binary_id = upload_data.binary_id
+    environment_id = upload_data.environment_id
+    
+    # Create or get commit
+    commit = await crud.get_commit_by_sha(db, sha=commit_sha)
+    if not commit:
+        # Create commit from metadata
+        commit_data = schemas.CommitCreate(
+            sha=commit_sha,
+            timestamp=datetime.fromisoformat(commit_info.get("committed_date", "").replace("Z", "+00:00")),
+            message=commit_info.get("message", ""),
+            author=commit_info.get("author", ""),
+            python_version=python_version
+        )
+        commit = await crud.create_commit(db, commit_data)
+    
+    # Create or get binary
+    binary = await crud.get_binary_by_id(db, binary_id=binary_id)
+    if not binary:
+        # Extract compile flags for binary description
+        configure_vars = metadata.get("configure_vars", {})
+        cflags = configure_vars.get("CFLAGS", "")
+        
+        binary_name_map = {
+            "optimized": "Optimized Build",
+            "debug": "Debug Build", 
+            "default": "Default Build",
+            "debug-opt": "Debug with Optimizations"
+        }
+        
+        binary_data = schemas.BinaryCreate(
+            id=binary_id,
+            name=binary_name_map.get(binary_id, binary_id.replace("-", " ").title()),
+            flags=cflags.split() if cflags else []
+        )
+        binary = await crud.create_binary(db, binary_data)
+    
+    # Create or get environment
+    environment = await crud.get_environment_by_id(db, environment_id=environment_id)
+    if not environment:
+        platform = metadata.get("platform", "")
+        compiler_info = metadata.get("compiler", {})
+        compiler_name = compiler_info.get("name", "")
+        
+        env_name_map = {
+            "linux-x86_64": "Linux x86_64",
+            "macos-x86_64": "macOS x86_64", 
+            "macos-arm64": "macOS ARM64",
+            "windows-x86_64": "Windows x86_64"
+        }
+        
+        env_description = f"Platform: {platform}, Compiler: {compiler_name}" if platform or compiler_name else None
+        environment_data = schemas.EnvironmentCreate(
+            id=environment_id,
+            name=env_name_map.get(environment_id, environment_id.replace("-", " ").title()),
+            description=env_description
+        )
+        environment = await crud.create_environment(db, environment_data)
+    
+    # Create run
+    run_id = f"run_{commit_sha[:8]}_{binary_id}_{environment_id}_{int(datetime.now().timestamp())}"
+    run_data = schemas.RunCreate(
+        run_id=run_id,
+        commit_sha=commit_sha,
+        binary_id=binary_id,
+        environment_id=environment_id,
+        python_version=python_version,
+        timestamp=datetime.now()
+    )
+    
+    try:
+        new_run = await crud.create_run(db, run_data)
+        
+        # Create benchmark results
+        created_results = []
+        for benchmark_result in upload_data.benchmark_results:
+            # Convert worker format to internal format
+            stats_json = benchmark_result.stats_json
+            
+            # Extract key metrics from the stats JSON
+            result_json = schemas.BenchmarkResultJson(
+                high_watermark_bytes=stats_json.get("metadata", {}).get("peak_memory", 0),
+                allocation_histogram=[[item["min_bytes"], item["count"]] 
+                                    for item in stats_json.get("allocation_size_histogram", [])],
+                total_allocated_bytes=stats_json.get("total_bytes_allocated", 0),
+                top_allocating_functions=[
+                    schemas.TopAllocatingFunction(
+                        function=alloc["location"],
+                        count=alloc.get("count", 0),
+                        total_size=alloc["size"]
+                    )
+                    for alloc in stats_json.get("top_allocations_by_size", [])[:10]
+                ],
+                benchmark_name=benchmark_result.benchmark_name
+            )
+            
+            result_data = schemas.BenchmarkResultCreate(
+                run_id=run_id,
+                benchmark_name=benchmark_result.benchmark_name,
+                result_json=result_json,
+                flamegraph_html=benchmark_result.flamegraph_html
+            )
+            created_result = await crud.create_benchmark_result(db, result_data)
+            created_results.append(created_result.id)
+        
+        return {
+            "message": "Worker run uploaded successfully",
+            "run_id": run_id,
+            "commit_sha": commit_sha,
+            "binary_id": binary_id,
+            "environment_id": environment_id,
+            "results_created": len(created_results),
+            "result_ids": created_results
+        }
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to upload worker run: {str(e)}")
+
+
+# Flamegraph endpoint
+@app.get("/api/flamegraph/{result_id}", response_model=dict)
+async def get_flamegraph(result_id: str, db: AsyncSession = Depends(get_database)):
+    result = await crud.get_benchmark_result_by_id(db, result_id=result_id)
+    if not result:
+        raise HTTPException(status_code=404, detail="Benchmark result not found")
+    
+    return {
+        "flamegraph_html": result.flamegraph_html or "",
+        "benchmark_name": result.benchmark_name,
+        "result_id": result_id
+    }
 
 
 if __name__ == "__main__":

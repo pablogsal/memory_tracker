@@ -16,7 +16,8 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { GitCompareArrows, Download, ArrowUpDown, Filter, AlertCircle, Info, Code2 } from 'lucide-react';
+import { GitCompareArrows, Download, ArrowUpDown, Filter, AlertCircle, Info, Code2, BarChart3 } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import type { DiffTableRow, MetricKey, Commit, Binary, Environment } from '@/lib/types';
 import { METRIC_OPTIONS } from '@/lib/types';
 import { api } from '@/lib/api';
@@ -38,6 +39,9 @@ interface EnhancedDiffTableRow {
   total_allocated_curr: number;
   total_allocated_prev?: number;
   total_allocated_delta_percent?: number;
+  
+  // Result ID for flamegraph
+  curr_result_id?: string;
 }
 import CommitTooltipContent from '@/components/diff/CommitTooltipContent';
 
@@ -46,6 +50,7 @@ type SortDirection = 'asc' | 'dsc';
 
 export default function DiffTablePage() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const [commits, setCommits] = useState<Commit[]>([]);
   const [binaries, setBinaries] = useState<Binary[]>([]);
   const [environments, setEnvironments] = useState<Environment[]>([]);
@@ -228,6 +233,7 @@ export default function DiffTablePage() {
               prev_commit_details: baseRow.prev_commit_details,
               curr_python_version_str: baseRow.curr_python_version_str,
               prev_python_version_str: baseRow.prev_python_version_str,
+              curr_result_id: baseRow.curr_result_id,
               
               // High watermark data
               high_watermark_curr: hwRow?.curr_metric_value || 0,
@@ -577,6 +583,7 @@ export default function DiffTablePage() {
                     </TableHead>
                     <TableHead className="text-center" colSpan={3}>High Watermark (Bytes)</TableHead>
                     <TableHead className="text-center" colSpan={3}>Total Allocated (Bytes)</TableHead>
+                    <TableHead className="text-center">Flamegraph</TableHead>
                   </TableRow>
                   <TableRow>
                     <TableHead></TableHead>
@@ -590,6 +597,7 @@ export default function DiffTablePage() {
                     </TableHead>
                     <TableHead className="text-right whitespace-nowrap">Previous</TableHead>
                     <TableHead className="text-right whitespace-nowrap">Current</TableHead>
+                    <TableHead className="text-center">View</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -623,6 +631,19 @@ export default function DiffTablePage() {
                       </TableCell>
                       <TableCell className="text-right font-mono text-sm">
                         {row.total_allocated_curr.toLocaleString()}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {row.curr_result_id ? (
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            onClick={() => router.push(`/flamegraph/${row.curr_result_id}`)}
+                          >
+                            <BarChart3 className="h-4 w-4" />
+                          </Button>
+                        ) : (
+                          <span className="text-muted-foreground text-sm">N/A</span>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}

@@ -73,4 +73,5 @@ export type DiffTableRow = {
   metric_key: MetricKey;
   prev_python_version_str?: string;
   curr_python_version_str: string;
+  curr_result_id: string;
 }; 
