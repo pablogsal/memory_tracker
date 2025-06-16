@@ -53,7 +53,7 @@ export const mockRuns: Run[] = [
   createRun('run_012', mockCommits[5].sha, mockBinaries[2].id, 0),
 ];
 
-const benchmarkNames = ['pyperformance_go', 'pyperformance_json_dumps', 'pyperformance_regex_dna', 'custom_memory_test_A', 'custom_memory_test_B'];
+export const benchmarkNames = ['pyperformance_go', 'pyperformance_json_dumps', 'pyperformance_regex_dna', 'custom_memory_test_A', 'custom_memory_test_B'];
 
 const generateBenchmarkResultJson = (baseValue: number, iteration: number) => {
   const factor = 1 + (Math.random() - 0.45) * 0.1 * iteration; // Small random variation, sometimes regressing
