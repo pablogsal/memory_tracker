@@ -1,7 +1,7 @@
 "use client";
 
 import Link from 'next/link';
-import { Pyramid, LineChart, GitCompareArrows, UploadCloud, Sun, Moon } from 'lucide-react';
+import { Pyramid, LineChart, GitCompareArrows, ListChecks, Sun, Moon } from 'lucide-react'; // Removed UploadCloud, Added ListChecks for Binaries
 import { useTheme } from 'next-themes';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
@@ -11,7 +11,7 @@ import { useState, useEffect } from 'react';
 const navItems = [
   { href: '/trends', label: 'Benchmark Trends', icon: LineChart },
   { href: '/diff', label: 'Diff Table View', icon: GitCompareArrows },
-  { href: '/upload', label: 'Upload Data', icon: UploadCloud },
+  { href: '/binaries', label: 'Inspect Binaries', icon: ListChecks }, // Changed from Upload Data
 ];
 
 export default function Header() {
@@ -26,7 +26,7 @@ export default function Header() {
   };
 
   if (!mounted) {
-    return ( // Render a placeholder or null during server rendering / hydration mismatch prevention
+    return ( 
       <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="container flex h-16 items-center justify-between">
           <Link href="/" className="flex items-center gap-2 text-lg font-headline font-bold">

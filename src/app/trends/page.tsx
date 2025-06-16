@@ -18,13 +18,14 @@ import {
   Legend,
   ResponsiveContainer,
 } from 'recharts';
-import type { EnrichedBenchmarkResult, MetricKey } from '@/lib/types';
-import { mockEnrichedBenchmarkResults, mockBinaries, mockCommits, benchmarkNames as allBenchmarkNames } from '@/lib/mockData';
+import type { EnrichedBenchmarkResult, MetricKey, PythonVersionFilterOption } from '@/lib/types';
+import { mockEnrichedBenchmarkResults, mockBinaries, mockCommits, benchmarkNames as allBenchmarkNames, mockPythonVersionOptions } from '@/lib/mockData';
 import { METRIC_OPTIONS } from '@/lib/types';
-import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
+import { ScrollArea } from '@/components/ui/scroll-area'; // ScrollBar removed as not directly used in this simplified version
 
 // Helper to format bytes
 const formatBytes = (bytes: number, decimals = 2) => {
+  if (!bytes && bytes !== 0) return 'N/A';
   if (bytes === 0) return '0 Bytes';
   const k = 1024;
   const dm = decimals < 0 ? 0 : decimals;
@@ -35,24 +36,49 @@ const formatBytes = (bytes: number, decimals = 2) => {
 
 export default function BenchmarkTrendPage() {
   const [selectedBinaryId, setSelectedBinaryId] = useState<string | undefined>(mockBinaries[0]?.id);
+  const [selectedPythonVersionKey, setSelectedPythonVersionKey] = useState<string | undefined>(
+    mockPythonVersionOptions[0] ? `${mockPythonVersionOptions[0].major}.${mockPythonVersionOptions[0].minor}` : undefined
+  );
   const [selectedMetric, setSelectedMetric] = useState<MetricKey>(METRIC_OPTIONS[0].value);
   const [selectedBenchmarks, setSelectedBenchmarks] = useState<string[]>([allBenchmarkNames[0]]);
   const [benchmarkSearch, setBenchmarkSearch] = useState('');
-  const [showAllVersions, setShowAllVersions] = useState(false); // Placeholder for version filtering
 
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
   const filteredData = useMemo(() => {
-    if (!selectedBinaryId) return [];
+    if (!selectedBinaryId || !selectedPythonVersionKey) return [];
     
+    const [majorStr, minorStr] = selectedPythonVersionKey.split('.');
+    const major = parseInt(majorStr);
+    const minor = parseInt(minorStr);
+
     return mockEnrichedBenchmarkResults
-      .filter(result => result.binary.id === selectedBinaryId && selectedBenchmarks.includes(result.benchmark_name))
+      .filter(result => 
+        result.binary.id === selectedBinaryId &&
+        result.run_python_version.major === major &&
+        result.run_python_version.minor === minor &&
+        selectedBenchmarks.includes(result.benchmark_name)
+      )
       .sort((a, b) => new Date(a.commit.timestamp).getTime() - new Date(b.commit.timestamp).getTime());
-  }, [selectedBinaryId, selectedBenchmarks]);
+  }, [selectedBinaryId, selectedPythonVersionKey, selectedBenchmarks]);
 
   const chartData = useMemo(() => {
-    const dataByCommit: { [commitSha: string]: { commitSha: string, timestamp: string, commitMessage: string, [benchmarkName: string]: any } } = {};
+    // Group data by commit SHA, then by benchmark name.
+    // Each point on the X-axis is a commit. Lines represent different benchmarks.
+    // If multiple Python patch versions exist for the same commit/binary/major.minor, we average them or pick one.
+    // For simplicity here, we'll assume mockEnrichedBenchmarkResults handles this or takes the first one.
+    // A more robust solution would aggregate or allow selecting patch versions.
+
+    const dataByCommit: { 
+      [commitSha: string]: { 
+        commitSha: string, 
+        timestamp: string, 
+        commitMessage: string,
+        fullVersion?: string, // Store the full python version for display
+        [benchmarkName: string]: any 
+      } 
+    } = {};
 
     filteredData.forEach(result => {
       const commitSha = result.commit.sha;
@@ -61,13 +87,30 @@ export default function BenchmarkTrendPage() {
           commitSha: commitSha.substring(0, 7), 
           timestamp: new Date(result.commit.timestamp).toLocaleDateString(),
           commitMessage: result.commit.message,
+          fullVersion: `${result.run_python_version.major}.${result.run_python_version.minor}.${result.run_python_version.patch}`
         };
       }
+      // Store the metric value for the specific benchmark. If multiple results for same commit/benchmark (e.g. different patches), this overwrites.
+      // Ideally, aggregate (e.g., average) or pick latest patch if multiple exist.
+      // For this mock, we assume one relevant data point per commit SHA after initial filtering.
       dataByCommit[commitSha][result.benchmark_name] = result.result_json[selectedMetric];
+      // Ensure all selected benchmarks have a key, even if undefined, to draw lines correctly
+      selectedBenchmarks.forEach(sb => {
+        if (!(sb in dataByCommit[commitSha])) {
+            dataByCommit[commitSha][sb] = undefined; // Or null
+        }
+      });
     });
     
-    return Object.values(dataByCommit).sort((a,b) => new Date(mockCommits.find(c=>c.sha.startsWith(a.commitSha))!.timestamp).getTime() - new Date(mockCommits.find(c=>c.sha.startsWith(b.commitSha))!.timestamp).getTime() );
-  }, [filteredData, selectedMetric]);
+    // Sort by the original commit timestamp
+    return Object.values(dataByCommit).sort((a,b) => {
+        const commitA = mockCommits.find(c => c.sha.startsWith(a.commitSha));
+        const commitB = mockCommits.find(c => c.sha.startsWith(b.commitSha));
+        if (!commitA || !commitB) return 0;
+        return new Date(commitA.timestamp).getTime() - new Date(commitB.timestamp).getTime();
+    });
+
+  }, [filteredData, selectedMetric, selectedBenchmarks]);
 
   const handleBenchmarkSelection = (benchmarkName: string) => {
     setSelectedBenchmarks(prev =>
@@ -79,14 +122,14 @@ export default function BenchmarkTrendPage() {
 
   const displayedBenchmarkNames = useMemo(() => {
     return allBenchmarkNames.filter(name => name.toLowerCase().includes(benchmarkSearch.toLowerCase()));
-  }, [benchmarkSearch]);
+  }, [benchmarkSearch, allBenchmarkNames]);
 
-  const lineColors = ['#8884d8', '#82ca9d', '#ffc658', '#ff7300', '#00C49F', '#FFBB28', '#FF8042'];
+  const lineColors = ['#8884d8', '#82ca9d', '#ffc658', '#ff7300', '#00C49F', '#FFBB28', '#FF8042', '#0088FE', '#00C49F', '#FFBB28'];
 
   if (!mounted) {
      return <div className="space-y-6">
       <h1 className="text-3xl font-bold font-headline">Benchmark Trends</h1>
-      <Card><CardHeader><CardTitle>Filters</CardTitle></CardHeader><CardContent><div className="h-20 animate-pulse bg-muted rounded-md"></div></CardContent></Card>
+      <Card><CardHeader><CardTitle>Filters</CardTitle></CardHeader><CardContent><div className="h-32 animate-pulse bg-muted rounded-md"></div></CardContent></Card>
       <Card><CardHeader><CardTitle>Chart</CardTitle></CardHeader><CardContent><div className="h-96 animate-pulse bg-muted rounded-md"></div></CardContent></Card>
     </div>;
   }
@@ -98,19 +141,35 @@ export default function BenchmarkTrendPage() {
       <Card>
         <CardHeader>
           <CardTitle>Filters</CardTitle>
-          <CardDescription>Select binary, metric, and benchmarks to visualize trends.</CardDescription>
+          <CardDescription>Select binary flags, Python version, metric, and benchmarks to visualize trends.</CardDescription>
         </CardHeader>
-        <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           <div>
-            <Label htmlFor="binary-select">Binary Configuration</Label>
+            <Label htmlFor="binary-select">Binary Flags</Label>
             <Select value={selectedBinaryId} onValueChange={setSelectedBinaryId}>
               <SelectTrigger id="binary-select">
-                <SelectValue placeholder="Select Binary" />
+                <SelectValue placeholder="Select Binary Flags" />
               </SelectTrigger>
               <SelectContent>
                 {mockBinaries.map(binary => (
                   <SelectItem key={binary.id} value={binary.id}>
-                    {binary.id}
+                    {binary.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          
+          <div>
+            <Label htmlFor="python-version-select">Python Version (Major.Minor)</Label>
+            <Select value={selectedPythonVersionKey} onValueChange={setSelectedPythonVersionKey}>
+              <SelectTrigger id="python-version-select">
+                <SelectValue placeholder="Select Python Version" />
+              </SelectTrigger>
+              <SelectContent>
+                {mockPythonVersionOptions.map(v => (
+                  <SelectItem key={v.label} value={v.label}>
+                    {v.label}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -133,8 +192,8 @@ export default function BenchmarkTrendPage() {
             </Select>
           </div>
 
-          <div className="lg:col-span-2">
-            <Label>Benchmarks</Label>
+          <div className="lg:col-span-3"> {/* Make benchmark selection span full width on larger screens */}
+            <Label>Benchmarks (Select up to {lineColors.length})</Label>
             <Input 
               placeholder="Search benchmarks..." 
               value={benchmarkSearch} 
@@ -142,19 +201,21 @@ export default function BenchmarkTrendPage() {
               className="mb-2"
             />
             <ScrollArea className="h-40 rounded-md border p-2">
-              <div className="space-y-2">
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-4 gap-y-2">
                 {displayedBenchmarkNames.map(name => (
                   <div key={name} className="flex items-center space-x-2">
                     <Checkbox
                       id={`bench-${name}`}
                       checked={selectedBenchmarks.includes(name)}
                       onCheckedChange={() => handleBenchmarkSelection(name)}
+                      disabled={!selectedBenchmarks.includes(name) && selectedBenchmarks.length >= lineColors.length}
                     />
-                    <Label htmlFor={`bench-${name}`} className="font-normal cursor-pointer">{name}</Label>
+                    <Label htmlFor={`bench-${name}`} className="font-normal cursor-pointer text-sm truncate" title={name}>{name}</Label>
                   </div>
                 ))}
               </div>
             </ScrollArea>
+             {selectedBenchmarks.length >= lineColors.length && <p className="text-xs text-muted-foreground mt-1">Maximum number of benchmarks selected for visualization.</p>}
           </div>
         </CardContent>
       </Card>
@@ -167,7 +228,7 @@ export default function BenchmarkTrendPage() {
               Trend Chart
             </CardTitle>
             <CardDescription>
-              Showing {selectedMetric.replace(/_/g, ' ')} for selected benchmarks.
+              Showing {METRIC_OPTIONS.find(m=>m.value === selectedMetric)?.label} for {mockBinaries.find(b=>b.id === selectedBinaryId)?.name} on Python {selectedPythonVersionKey}.x.
             </CardDescription>
           </div>
           <Button variant="outline" size="sm" disabled>
@@ -176,21 +237,32 @@ export default function BenchmarkTrendPage() {
           </Button>
         </CardHeader>
         <CardContent>
-          {chartData.length > 0 ? (
+          {chartData.length > 0 && selectedBenchmarks.length > 0 ? (
             <ResponsiveContainer width="100%" height={400}>
               <LineChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="commitSha" angle={-30} textAnchor="end" height={70} interval={0} 
+                <XAxis 
+                  dataKey="commitSha" 
+                  angle={-35} 
+                  textAnchor="end" 
+                  height={80} 
+                  interval={chartData.length > 20 ? Math.floor(chartData.length / 10) : 0} // Adjust interval for readability
                   tickFormatter={(value, index) => chartData[index]?.commitSha || value}
                 />
                 <YAxis tickFormatter={(value) => formatBytes(value)} />
                 <Tooltip 
-                  formatter={(value: number, name: string) => [formatBytes(value), name.replace(/_/g, ' ')]}
+                  formatter={(value: number, name: string, props) => {
+                    const displayName = name.replace(/_/g, ' ');
+                    const formattedValue = formatBytes(value);
+                    const fullVersion = props.payload.fullVersion ? `(py ${props.payload.fullVersion})` : '';
+                    return [`${formattedValue} ${fullVersion}`, displayName];
+                  }}
                   labelFormatter={(label, payload) => {
                      const commit = payload?.[0]?.payload;
                      return commit ? `${commit.commitSha}: ${commit.commitMessage.substring(0,50)}...` : label;
                   }}
-                  contentStyle={{ backgroundColor: 'hsl(var(--background))', border: '1px solid hsl(var(--border))' }}
+                  contentStyle={{ backgroundColor: 'hsl(var(--background))', border: '1px solid hsl(var(--border))', borderRadius: 'var(--radius)' }}
+                  itemSorter={(item) => selectedBenchmarks.indexOf(item.dataKey as string)}
                 />
                 <Legend formatter={(value) => value.replace(/_/g, ' ')} />
                 {selectedBenchmarks.map((benchName, index) => (
@@ -202,6 +274,7 @@ export default function BenchmarkTrendPage() {
                     strokeWidth={2}
                     dot={{ r: 3 }}
                     activeDot={{ r: 6 }}
+                    connectNulls // Connect lines even if some data points are missing
                   />
                 ))}
               </LineChart>
@@ -210,7 +283,7 @@ export default function BenchmarkTrendPage() {
             <div className="flex flex-col items-center justify-center h-96 text-muted-foreground">
               <AlertCircle className="w-16 h-16 mb-4" />
               <p className="text-lg">No data available for the selected filters.</p>
-              <p>Please select a binary, metric, and at least one benchmark.</p>
+              <p>Please select a binary, Python version, metric, and at least one benchmark.</p>
             </div>
           )}
         </CardContent>
