@@ -1,0 +1,480 @@
+
+"use client";
+
+import React, { useState, useMemo, useEffect } from 'react';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { LineChart as ChartIcon, Download, AlertCircle, Code2 } from 'lucide-react';
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+} from 'recharts';
+import type { EnrichedBenchmarkResult, MetricKey, PythonVersionFilterOption, Binary } from '@/lib/types';
+import { METRIC_OPTIONS } from '@/lib/types';
+import { api } from '@/lib/api';
+import { ScrollArea } from '@/components/ui/scroll-area';
+
+const formatBytes = (bytes: number, decimals = 2) => {
+  if (!bytes && bytes !== 0) return 'N/A';
+  if (bytes === 0) return '0 Bytes';
+  const k = 1024;
+  const dm = decimals < 0 ? 0 : decimals;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+};
+
+export default function BenchmarkTrendPage() {
+  const [binaries, setBinaries] = useState<Binary[]>([]);
+  const [pythonVersionOptions, setPythonVersionOptions] = useState<PythonVersionFilterOption[]>([]);
+  const [benchmarkResults, setBenchmarkResults] = useState<EnrichedBenchmarkResult[]>([]);
+  const [allBenchmarkNames, setAllBenchmarkNames] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const [selectedBinaryId, setSelectedBinaryId] = useState<string | undefined>();
+  const [selectedPythonVersionKey, setSelectedPythonVersionKey] = useState<string | undefined>();
+  const [selectedMetric, setSelectedMetric] = useState<MetricKey>(METRIC_OPTIONS[0].value);
+  const [selectedBenchmarks, setSelectedBenchmarks] = useState<string[]>([]);
+  const [benchmarkSearch, setBenchmarkSearch] = useState('');
+
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
+  // Load initial data
+  useEffect(() => {
+    async function loadData() {
+      try {
+        setLoading(true);
+        setError(null);
+        
+        const [binariesData, pythonVersionsData, benchmarkResultsData] = await Promise.all([
+          api.getBinaries(),
+          api.getPythonVersions(),
+          api.getBenchmarkResults({ limit: 10000 })
+        ]);
+        
+        setBinaries(binariesData);
+        setPythonVersionOptions(pythonVersionsData);
+        setBenchmarkResults(benchmarkResultsData);
+        
+        // Extract unique benchmark names
+        const uniqueBenchmarks = Array.from(new Set(benchmarkResultsData.map(r => r.benchmark_name)));
+        setAllBenchmarkNames(uniqueBenchmarks);
+        
+        // Set initial selections
+        if (binariesData.length > 0 && !selectedBinaryId) {
+          setSelectedBinaryId(binariesData[0].id);
+        }
+        if (pythonVersionsData.length > 0 && !selectedPythonVersionKey) {
+          setSelectedPythonVersionKey(pythonVersionsData[0].label);
+        }
+        if (uniqueBenchmarks.length > 0 && selectedBenchmarks.length === 0) {
+          setSelectedBenchmarks([uniqueBenchmarks[0]]);
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to load data');
+      } finally {
+        setLoading(false);
+      }
+    }
+    
+    if (mounted) {
+      loadData();
+    }
+  }, [mounted]);
+
+  // Ensure initial benchmark selection after data loads
+  useEffect(() => {
+    if (!loading && allBenchmarkNames.length > 0 && selectedBenchmarks.length === 0) {
+      setSelectedBenchmarks([allBenchmarkNames[0]]);
+    }
+  }, [loading, allBenchmarkNames, selectedBenchmarks.length]);
+
+  const filteredData = useMemo(() => {
+    if (!selectedBinaryId || !selectedPythonVersionKey || selectedBenchmarks.length === 0) return [];
+    
+    const versionOption = pythonVersionOptions.find(v => v.label === selectedPythonVersionKey);
+    if (!versionOption) return [];
+
+    // Create a Set for faster benchmark lookup
+    const benchmarkSet = new Set(selectedBenchmarks);
+
+    // Filter and sort efficiently
+    return benchmarkResults
+      .filter(result => 
+        result.binary.id === selectedBinaryId &&
+        result.commit.python_version.major === versionOption.major &&
+        result.commit.python_version.minor === versionOption.minor &&
+        benchmarkSet.has(result.benchmark_name)
+      )
+      .sort((a, b) => new Date(a.commit.timestamp).getTime() - new Date(b.commit.timestamp).getTime());
+  }, [selectedBinaryId, selectedPythonVersionKey, selectedBenchmarks, benchmarkResults, pythonVersionOptions]);
+
+  const chartData = useMemo(() => {
+    const dataByCommit: { 
+      [commitSha: string]: { 
+        commitSha: string, 
+        timestamp: string, 
+        commitMessage: string,
+        fullVersion?: string,
+        sortTimestamp: number, // For efficient sorting
+        [benchmarkName: string]: any 
+      } 
+    } = {};
+
+    filteredData.forEach(result => {
+      const commitSha = result.commit.sha;
+      if (!dataByCommit[commitSha]) {
+        const timestampMs = new Date(result.commit.timestamp).getTime();
+        dataByCommit[commitSha] = { 
+          commitSha: commitSha.substring(0, 7), 
+          timestamp: new Date(result.commit.timestamp).toLocaleDateString(),
+          commitMessage: result.commit.message,
+          fullVersion: `${result.run_python_version.major}.${result.run_python_version.minor}.${result.run_python_version.patch}`,
+          sortTimestamp: timestampMs // Store parsed timestamp for efficient sorting
+        };
+      }
+      dataByCommit[commitSha][result.benchmark_name] = result.result_json[selectedMetric];
+      // Ensure all selected benchmarks have an entry (even if undefined) for consistent line rendering
+      selectedBenchmarks.forEach(sb => {
+        if (!(sb in dataByCommit[commitSha])) {
+            dataByCommit[commitSha][sb] = undefined; 
+        }
+      });
+    });
+    
+    // Sort by pre-computed timestamp (much more efficient)
+    return Object.values(dataByCommit).sort((a, b) => a.sortTimestamp - b.sortTimestamp);
+
+  }, [filteredData, selectedMetric, selectedBenchmarks]);
+
+  // Calculate Y-axis domain for auto-scaling
+  const yAxisDomain = useMemo(() => {
+    if (chartData.length === 0 || selectedBenchmarks.length === 0) {
+      return ['auto', 'auto'];
+    }
+
+    let min = Infinity;
+    let max = -Infinity;
+
+    chartData.forEach(dataPoint => {
+      selectedBenchmarks.forEach(benchmark => {
+        const value = dataPoint[benchmark];
+        if (typeof value === 'number' && !isNaN(value)) {
+          min = Math.min(min, value);
+          max = Math.max(max, value);
+        }
+      });
+    });
+
+    if (min === Infinity || max === -Infinity) {
+      return ['auto', 'auto'];
+    }
+
+    // Add 10% padding to top and bottom for better visualization
+    const padding = (max - min) * 0.1;
+    const domainMin = Math.max(0, min - padding); // Don't go below 0 for memory values
+    const domainMax = max + padding;
+
+    return [domainMin, domainMax];
+  }, [chartData, selectedBenchmarks]);
+
+  const handleBenchmarkSelection = (benchmarkName: string) => {
+    setSelectedBenchmarks(prev =>
+      prev.includes(benchmarkName)
+        ? prev.filter(b => b !== benchmarkName)
+        : [...prev, benchmarkName]
+    );
+  };
+
+  const handleExport = (format: 'png' | 'csv') => {
+    if (format === 'csv') {
+      exportAsCSV();
+    } else if (format === 'png') {
+      exportAsPNG();
+    }
+  };
+
+  const exportAsCSV = () => {
+    if (chartData.length === 0) return;
+
+    // Create CSV headers
+    const headers = ['Commit SHA', 'Timestamp', 'Message', 'Python Version', ...selectedBenchmarks];
+    
+    // Create CSV rows
+    const rows = chartData.map(dataPoint => [
+      dataPoint.commitSha,
+      dataPoint.timestamp,
+      `"${dataPoint.commitMessage}"`, // Quote message to handle commas
+      dataPoint.fullVersion || '',
+      ...selectedBenchmarks.map(benchmark => {
+        const value = dataPoint[benchmark];
+        return typeof value === 'number' ? value : '';
+      })
+    ]);
+
+    // Combine headers and rows
+    const csvContent = [headers, ...rows]
+      .map(row => row.join(','))
+      .join('\n');
+
+    // Create and download file
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `benchmark-trends-${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const exportAsPNG = () => {
+    // Use html2canvas to capture the chart
+    const chartElement = document.querySelector('.recharts-wrapper');
+    if (!chartElement) return;
+
+    import('html2canvas').then(html2canvas => {
+      html2canvas.default(chartElement as HTMLElement, {
+        backgroundColor: '#ffffff',
+        scale: 2, // Higher resolution
+        useCORS: true,
+      }).then(canvas => {
+        const link = document.createElement('a');
+        link.download = `benchmark-trends-${new Date().toISOString().split('T')[0]}.png`;
+        link.href = canvas.toDataURL();
+        link.click();
+      });
+    }).catch(error => {
+      console.error('Failed to export chart as PNG:', error);
+      alert('PNG export failed. Please try again.');
+    });
+  };
+
+  const displayedBenchmarkNames = useMemo(() => {
+    if (allBenchmarkNames.length === 0) {
+      return [];
+    }
+    return allBenchmarkNames.filter(name => 
+      name.toLowerCase().includes(benchmarkSearch.toLowerCase())
+    );
+  }, [allBenchmarkNames, benchmarkSearch]);
+
+  const lineColors = ['#8884d8', '#82ca9d', '#ffc658', '#ff7300', '#00C49F', '#FFBB28', '#FF8042', '#0088FE', '#00C49F', '#FFBB28'];
+
+  if (!mounted || loading) {
+     return <div className="space-y-6">
+      <h1 className="text-3xl font-bold font-headline">Benchmark Trends</h1>
+      <Card><CardHeader><CardTitle>Filters</CardTitle></CardHeader><CardContent><div className="h-32 animate-pulse bg-muted rounded-md"></div></CardContent></Card>
+      <Card><CardHeader><CardTitle>Chart</CardTitle></CardHeader><CardContent><div className="h-96 animate-pulse bg-muted rounded-md"></div></CardContent></Card>
+    </div>;
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <h1 className="text-3xl font-bold font-headline">Benchmark Trends</h1>
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center h-64 text-muted-foreground">
+            <AlertCircle className="w-16 h-16 mb-4 text-red-500" />
+            <p className="text-lg">Error loading data</p>
+            <p className="text-sm">{error}</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <h1 className="text-3xl font-bold font-headline">Benchmark Trends</h1>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Filters</CardTitle>
+          <CardDescription>Select binary flags, Python version (Major.Minor), metric, and benchmarks to visualize trends.</CardDescription>
+        </CardHeader>
+        <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div>
+            <Label htmlFor="binary-select">Binary Flags</Label>
+            <Select value={selectedBinaryId} onValueChange={setSelectedBinaryId}>
+              <SelectTrigger id="binary-select">
+                <SelectValue placeholder="Select Binary Flags" />
+              </SelectTrigger>
+              <SelectContent>
+                {binaries.map(binary => (
+                  <SelectItem key={binary.id} value={binary.id}>
+                    {binary.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          
+          <div>
+            <Label htmlFor="python-version-select">Python Version (Major.Minor)</Label>
+            <Select value={selectedPythonVersionKey} onValueChange={setSelectedPythonVersionKey}>
+              <SelectTrigger id="python-version-select">
+                <SelectValue placeholder="Select Python Version" />
+              </SelectTrigger>
+              <SelectContent>
+                {pythonVersionOptions.map(v => (
+                  <SelectItem key={v.label} value={v.label}>
+                    <div className="flex items-center gap-2">
+                       <Code2 className="h-4 w-4 text-primary/80" /> {v.label}
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div>
+            <Label htmlFor="metric-select">Metric</Label>
+            <Select value={selectedMetric} onValueChange={(val) => setSelectedMetric(val as MetricKey)}>
+              <SelectTrigger id="metric-select">
+                <SelectValue placeholder="Select Metric" />
+              </SelectTrigger>
+              <SelectContent>
+                {METRIC_OPTIONS.map(option => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="lg:col-span-3">
+            <Label>Benchmarks (Select up to {lineColors.length})</Label>
+            <Input 
+              placeholder="Search benchmarks..." 
+              value={benchmarkSearch} 
+              onChange={(e) => setBenchmarkSearch(e.target.value)}
+              className="mb-2"
+            />
+            <ScrollArea className="h-40 rounded-md border p-2">
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-4 gap-y-2">
+                {displayedBenchmarkNames.map(name => (
+                  <div key={name} className="flex items-center space-x-2">
+                    <Checkbox
+                      id={`bench-${name}`}
+                      checked={selectedBenchmarks.includes(name)}
+                      onCheckedChange={() => handleBenchmarkSelection(name)}
+                      disabled={!selectedBenchmarks.includes(name) && selectedBenchmarks.length >= lineColors.length}
+                    />
+                    <Label htmlFor={`bench-${name}`} className="font-normal cursor-pointer text-sm truncate" title={name}>{name}</Label>
+                  </div>
+                ))}
+              </div>
+            </ScrollArea>
+             {selectedBenchmarks.length >= lineColors.length && <p className="text-xs text-muted-foreground mt-1">Maximum number of benchmarks selected for visualization.</p>}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="flex flex-row items-start justify-between">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <ChartIcon className="h-6 w-6 text-primary" />
+              Trend Chart
+            </CardTitle>
+            <CardDescription>
+              Showing {METRIC_OPTIONS.find(m=>m.value === selectedMetric)?.label} for {binaries.find(b=>b.id === selectedBinaryId)?.name} on Python {selectedPythonVersionKey}.x.
+            </CardDescription>
+          </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" disabled={chartData.length === 0}>
+                <Download className="mr-2 h-4 w-4" />
+                Export
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent>
+              <DropdownMenuItem onClick={() => handleExport('png')}>
+                <Download className="mr-2 h-4 w-4" />
+                Export as PNG
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleExport('csv')}>
+                <Download className="mr-2 h-4 w-4" />
+                Export as CSV
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </CardHeader>
+        <CardContent>
+          {chartData.length > 0 && selectedBenchmarks.length > 0 ? (
+            <ResponsiveContainer width="100%" height={400}>
+              <LineChart data={chartData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis 
+                  dataKey="commitSha" 
+                  angle={-35} 
+                  textAnchor="end" 
+                  height={80} 
+                  interval={chartData.length > 20 ? Math.floor(chartData.length / 10) : 0} 
+                  tickFormatter={(value, index) => chartData[index]?.commitSha || value}
+                />
+                <YAxis 
+                  domain={yAxisDomain}
+                  tickFormatter={(value) => formatBytes(value)} 
+                />
+                <Tooltip 
+                  formatter={(value: number, name: string, props) => {
+                    const displayName = name.replace(/_/g, ' ');
+                    const formattedValue = formatBytes(value);
+                    // props.payload.fullVersion comes from the commit's python_version
+                    const fullVersion = props.payload.fullVersion ? `(py ${props.payload.fullVersion})` : ''; 
+                    return [`${formattedValue} ${fullVersion}`, displayName];
+                  }}
+                  labelFormatter={(label, payload) => { // label is commitSha here
+                     const commitData = payload?.[0]?.payload;
+                     if (commitData) {
+                       return `${commitData.commitSha} (py ${commitData.fullVersion}): ${commitData.commitMessage.substring(0,50)}...`;
+                     }
+                     return label;
+                  }}
+                  contentStyle={{ backgroundColor: 'hsl(var(--background))', border: '1px solid hsl(var(--border))', borderRadius: 'var(--radius)' }}
+                  itemSorter={(item) => selectedBenchmarks.indexOf(item.dataKey as string)}
+                />
+                <Legend formatter={(value) => value.replace(/_/g, ' ')} />
+                {selectedBenchmarks.map((benchName, index) => (
+                  <Line
+                    key={benchName}
+                    type="monotone"
+                    dataKey={benchName}
+                    stroke={lineColors[index % lineColors.length]}
+                    strokeWidth={2}
+                    dot={{ r: 3 }}
+                    activeDot={{ r: 6 }}
+                    connectNulls 
+                  />
+                ))}
+              </LineChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="flex flex-col items-center justify-center h-96 text-muted-foreground">
+              <AlertCircle className="w-16 h-16 mb-4" />
+              <p className="text-lg">No data available for the selected filters.</p>
+              <p>Please select a binary, Python version, metric, and at least one benchmark, ensuring commits exist for that Python version.</p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}

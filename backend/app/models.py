@@ -1,0 +1,78 @@
+from sqlalchemy import Column, Integer, String, DateTime, Text, ForeignKey, JSON, Index
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import relationship
+from datetime import datetime
+
+Base = declarative_base()
+
+
+class Commit(Base):
+    __tablename__ = "commits"
+    
+    sha = Column(String(40), primary_key=True)
+    timestamp = Column(DateTime, nullable=False)
+    message = Column(Text, nullable=False)
+    author = Column(String(255), nullable=False)
+    python_major = Column(Integer, nullable=False)
+    python_minor = Column(Integer, nullable=False)
+    python_patch = Column(Integer, nullable=False)
+    
+    runs = relationship("Run", back_populates="commit")
+    
+    __table_args__ = (
+        Index('idx_commits_timestamp', 'timestamp'),
+        Index('idx_commits_python_version', 'python_major', 'python_minor', 'python_patch'),
+        Index('idx_commits_timestamp_python_version', 'timestamp', 'python_major', 'python_minor'),  # For efficient previous commit lookup
+    )
+
+
+class Binary(Base):
+    __tablename__ = "binaries"
+    
+    id = Column(String(50), primary_key=True)
+    name = Column(String(255), nullable=False)
+    flags = Column(JSON, nullable=False)  # Array of strings
+    
+    runs = relationship("Run", back_populates="binary")
+
+
+class Run(Base):
+    __tablename__ = "runs"
+    
+    run_id = Column(String(100), primary_key=True)
+    commit_sha = Column(String(40), ForeignKey("commits.sha"), nullable=False)
+    binary_id = Column(String(50), ForeignKey("binaries.id"), nullable=False)
+    python_major = Column(Integer, nullable=False)
+    python_minor = Column(Integer, nullable=False)
+    python_patch = Column(Integer, nullable=False)
+    timestamp = Column(DateTime, nullable=False)
+    
+    commit = relationship("Commit", back_populates="runs")
+    binary = relationship("Binary", back_populates="runs")
+    benchmark_results = relationship("BenchmarkResult", back_populates="run")
+    
+    __table_args__ = (
+        Index('idx_runs_commit_binary', 'commit_sha', 'binary_id'),
+        Index('idx_runs_timestamp', 'timestamp'),
+        Index('idx_runs_python_version', 'python_major', 'python_minor', 'python_patch'),
+        Index('idx_runs_binary_timestamp', 'binary_id', 'timestamp'),  # For efficient previous commit with binary lookup
+    )
+
+
+class BenchmarkResult(Base):
+    __tablename__ = "benchmark_results"
+    
+    id = Column(String(200), primary_key=True)
+    run_id = Column(String(100), ForeignKey("runs.run_id"), nullable=False)
+    benchmark_name = Column(String(100), nullable=False)
+    high_watermark_bytes = Column(Integer, nullable=False)
+    allocation_histogram = Column(JSON, nullable=False)  # Array of [size, count] tuples
+    total_allocated_bytes = Column(Integer, nullable=False)
+    top_allocating_functions = Column(JSON, nullable=False)  # Array of function objects
+    
+    run = relationship("Run", back_populates="benchmark_results")
+    
+    __table_args__ = (
+        Index('idx_benchmark_results_run_benchmark', 'run_id', 'benchmark_name'),
+        Index('idx_benchmark_results_benchmark_name', 'benchmark_name'),
+    )
