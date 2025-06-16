@@ -2,7 +2,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc, and_, func
 from sqlalchemy.orm import selectinload
 from typing import List, Optional, Dict, Any
-from datetime import datetime
+from datetime import datetime, UTC
 from . import models, schemas
 
 
@@ -347,3 +347,63 @@ async def get_commits_for_binary_and_environment(db: AsyncSession, binary_id: st
         })
     
     return commits
+
+
+# Auth Token CRUD operations
+async def get_auth_token_by_token(db: AsyncSession, token: str) -> Optional[models.AuthToken]:
+    """Get an auth token by its token value."""
+    result = await db.execute(
+        select(models.AuthToken).where(
+            and_(
+                models.AuthToken.token == token,
+                models.AuthToken.is_active == True
+            )
+        )
+    )
+    return result.scalars().first()
+
+
+async def create_auth_token(db: AsyncSession, token: str, name: str, description: str = None) -> models.AuthToken:
+    """Create a new auth token."""
+    db_token = models.AuthToken(
+        token=token,
+        name=name,
+        description=description,
+        created_at=datetime.now(UTC)
+    )
+    db.add(db_token)
+    await db.commit()
+    await db.refresh(db_token)
+    return db_token
+
+
+async def update_token_last_used(db: AsyncSession, token: str) -> None:
+    """Update the last_used timestamp for a token."""
+    result = await db.execute(
+        select(models.AuthToken).where(models.AuthToken.token == token)
+    )
+    auth_token = result.scalars().first()
+    if auth_token:
+        auth_token.last_used = datetime.now(UTC)
+        await db.commit()
+
+
+async def get_all_auth_tokens(db: AsyncSession) -> List[models.AuthToken]:
+    """Get all auth tokens (for admin purposes)."""
+    result = await db.execute(
+        select(models.AuthToken).order_by(desc(models.AuthToken.created_at))
+    )
+    return result.scalars().all()
+
+
+async def deactivate_auth_token(db: AsyncSession, token_id: int) -> bool:
+    """Deactivate an auth token by ID."""
+    result = await db.execute(
+        select(models.AuthToken).where(models.AuthToken.id == token_id)
+    )
+    auth_token = result.scalars().first()
+    if auth_token:
+        auth_token.is_active = False
+        await db.commit()
+        return True
+    return False

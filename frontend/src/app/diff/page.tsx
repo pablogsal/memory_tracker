@@ -398,12 +398,12 @@ export default function DiffTablePage() {
               </div>
               <div className="flex-1 h-px bg-border"></div>
               <div className="flex items-center gap-2">
-                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${selectedBinaryId ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>2</div>
+                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${selectedBinaryId && availableEnvironments.length > 0 ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>2</div>
                 <span>Select Environment</span>
               </div>
               <div className="flex-1 h-px bg-border"></div>
               <div className="flex items-center gap-2">
-                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${selectedBinaryId && selectedEnvironmentId ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>3</div>
+                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${selectedBinaryId && availableEnvironments.length > 0 && selectedEnvironmentId ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>3</div>
                 <span>Select Run</span>
               </div>
             </div>
@@ -426,16 +426,16 @@ export default function DiffTablePage() {
               {/* Step 2: Environment Selection */}
               <div className="space-y-3">
                 <Label htmlFor="filter-environment" className="flex items-center gap-2">
-                  <div className={`w-4 h-4 rounded-full flex items-center justify-center text-xs font-bold ${selectedBinaryId ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>2</div>
+                  <div className={`w-4 h-4 rounded-full flex items-center justify-center text-xs font-bold ${selectedBinaryId && availableEnvironments.length > 0 ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>2</div>
                   Environment
                 </Label>
                 <Select 
                   value={selectedEnvironmentId} 
                   onValueChange={setSelectedEnvironmentId}
-                  disabled={!selectedBinaryId}
+                  disabled={!selectedBinaryId || availableEnvironments.length === 0}
                 >
-                  <SelectTrigger id="filter-environment" className={!selectedBinaryId ? 'opacity-50' : ''}>
-                    <SelectValue placeholder={!selectedBinaryId ? "First select a binary" : "Select Environment"} />
+                  <SelectTrigger id="filter-environment" className={!selectedBinaryId || availableEnvironments.length === 0 ? 'opacity-50' : ''}>
+                    <SelectValue placeholder={!selectedBinaryId ? "First select a binary" : availableEnvironments.length === 0 ? "No environments available for this binary" : "Select Environment"} />
                   </SelectTrigger>
                   <SelectContent>
                     {availableEnvironments.map(environment => (
@@ -448,16 +448,16 @@ export default function DiffTablePage() {
               {/* Step 3: Run Selection */}
               <div className="space-y-3">
                 <Label htmlFor="filter-commit" className="flex items-center gap-2">
-                  <div className={`w-4 h-4 rounded-full flex items-center justify-center text-xs font-bold ${selectedBinaryId && selectedEnvironmentId ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>3</div>
+                  <div className={`w-4 h-4 rounded-full flex items-center justify-center text-xs font-bold ${selectedBinaryId && availableEnvironments.length > 0 && selectedEnvironmentId ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>3</div>
                   Run
                 </Label>
                 <Select 
                   value={selectedCommitSha} 
                   onValueChange={setSelectedCommitSha}
-                  disabled={!selectedBinaryId || !selectedEnvironmentId}
+                  disabled={!selectedBinaryId || availableEnvironments.length === 0 || !selectedEnvironmentId}
                 >
-                  <SelectTrigger id="filter-commit" className={!selectedBinaryId || !selectedEnvironmentId ? 'opacity-50' : ''}>
-                    <SelectValue placeholder={!selectedBinaryId || !selectedEnvironmentId ? "Select binary & environment first" : "Select Run"} />
+                  <SelectTrigger id="filter-commit" className={!selectedBinaryId || availableEnvironments.length === 0 || !selectedEnvironmentId ? 'opacity-50' : ''}>
+                    <SelectValue placeholder={!selectedBinaryId ? "Select binary first" : availableEnvironments.length === 0 ? "No environments available" : !selectedEnvironmentId ? "Select environment first" : "Select Run"} />
                   </SelectTrigger>
                   <SelectContent>
                     {availableCommits.map(commit => (

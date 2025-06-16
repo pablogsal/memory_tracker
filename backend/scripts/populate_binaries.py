@@ -11,8 +11,24 @@ import os
 # Add the parent directory to the path so we can import from app
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from app.database import AsyncSessionLocal, create_tables
 from app import schemas, crud, models
+from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+
+
+def create_database_session(database_url: str = None):
+    """Create database connection from URL."""
+    if not database_url:
+        database_url = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./memory_tracker.db")
+    
+    engine = create_async_engine(database_url, echo=False)
+    async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    return engine, async_session
+
+
+async def create_tables_for_engine(engine):
+    """Create tables using the provided engine."""
+    async with engine.begin() as conn:
+        await conn.run_sync(models.Base.metadata.create_all)
 
 
 def get_standard_binaries():
@@ -69,10 +85,12 @@ def get_standard_binaries():
     ]
 
 
-async def populate_binaries(force: bool = False):
+async def populate_binaries(force: bool = False, database_url: str = None):
     """Populate the database with standard binary configurations."""
+    engine, AsyncSessionLocal = create_database_session(database_url)
+    
     # Ensure database tables exist
-    await create_tables()
+    await create_tables_for_engine(engine)
     
     async with AsyncSessionLocal() as db:
         try:
@@ -132,10 +150,10 @@ async def populate_binaries(force: bool = False):
             return False
 
 
-async def list_binaries():
+async def list_binaries(database_url: str = None):
     """List all currently registered binaries."""
-    # Ensure database tables exist
-    await create_tables()
+    engine, AsyncSessionLocal = create_database_session(database_url)
+    await create_tables_for_engine(engine)
     
     async with AsyncSessionLocal() as db:
         try:
@@ -194,13 +212,18 @@ Examples:
         action='store_true',
         help='List all currently registered binaries'
     )
+    parser.add_argument(
+        '--database-url', '--db-url',
+        help='Database URL (default: sqlite+aiosqlite:///./memory_tracker.db or DATABASE_URL env var)',
+        default=None
+    )
     
     args = parser.parse_args()
     
     if args.list:
-        success = asyncio.run(list_binaries())
+        success = asyncio.run(list_binaries(args.database_url))
     else:
-        success = asyncio.run(populate_binaries(force=args.force))
+        success = asyncio.run(populate_binaries(force=args.force, database_url=args.database_url))
         if not success:
             sys.exit(1)
 

@@ -1,7 +1,7 @@
-from sqlalchemy import Column, Integer, String, DateTime, Text, ForeignKey, JSON, Index
+from sqlalchemy import Column, Integer, String, DateTime, Text, ForeignKey, JSON, Index, Boolean
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
-from datetime import datetime
+from datetime import datetime, UTC
 
 Base = declarative_base()
 
@@ -90,4 +90,21 @@ class BenchmarkResult(Base):
     __table_args__ = (
         Index('idx_benchmark_results_run_benchmark', 'run_id', 'benchmark_name'),
         Index('idx_benchmark_results_benchmark_name', 'benchmark_name'),
+    )
+
+
+class AuthToken(Base):
+    __tablename__ = "auth_tokens"
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    token = Column(String(64), unique=True, nullable=False, index=True)  # SHA-256 hex = 64 chars
+    name = Column(String(255), nullable=False)  # Human-readable name for the token
+    description = Column(Text, nullable=True)  # Optional description
+    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(UTC))
+    last_used = Column(DateTime, nullable=True)  # Track when token was last used
+    is_active = Column(Boolean, nullable=False, default=True)  # Allow disabling tokens
+    
+    __table_args__ = (
+        Index('idx_auth_tokens_token', 'token'),
+        Index('idx_auth_tokens_active', 'is_active'),
     )

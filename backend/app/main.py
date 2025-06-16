@@ -1,12 +1,21 @@
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import FastAPI, Depends, HTTPException, status, Header
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import List, Optional
+from typing import List, Optional, Annotated
 from datetime import datetime
 import uuid
+import logging
 
 from . import crud, models, schemas
 from .database import get_database, create_tables
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
 
 app = FastAPI(title="CPython Memory Tracker API", version="1.0.0")
 
@@ -19,10 +28,78 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Add request logging middleware
+@app.middleware("http")
+async def log_requests(request, call_next):
+    logger = logging.getLogger("api")
+    start_time = datetime.now()
+    
+    # Log the incoming request
+    logger.info(f"→ {request.method} {request.url.path}")
+    if request.query_params:
+        logger.info(f"  Query params: {dict(request.query_params)}")
+    
+    # Process the request
+    response = await call_next(request)
+    
+    # Log the response
+    process_time = (datetime.now() - start_time).total_seconds()
+    logger.info(f"← {response.status_code} {request.method} {request.url.path} ({process_time:.3f}s)")
+    
+    return response
+
 
 @app.on_event("startup")
 async def startup_event():
     await create_tables()
+
+
+# Authentication
+security = HTTPBearer(auto_error=False)
+
+async def get_current_token(
+    authorization: Annotated[str, Header()] = None,
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: AsyncSession = Depends(get_database)
+) -> models.AuthToken:
+    """
+    Extract and validate auth token from Authorization header.
+    Supports both 'Bearer <token>' and 'Token <token>' formats.
+    """
+    token = None
+    
+    # Try to extract token from Authorization header
+    if authorization:
+        if authorization.startswith("Bearer "):
+            token = authorization[7:]  # Remove "Bearer " prefix
+        elif authorization.startswith("Token "):
+            token = authorization[6:]  # Remove "Token " prefix
+        else:
+            # Assume the entire header is the token
+            token = authorization
+    elif credentials:
+        token = credentials.credentials
+    
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing authentication token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    # Look up token in database
+    auth_token = await crud.get_auth_token_by_token(db, token)
+    if not auth_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    # Update last used timestamp
+    await crud.update_token_last_used(db, token)
+    
+    return auth_token
 
 
 # Commits endpoints
@@ -32,7 +109,10 @@ async def get_commits(
     limit: int = 100, 
     db: AsyncSession = Depends(get_database)
 ):
+    logger = logging.getLogger(__name__)
+    logger.info(f"Fetching commits (skip={skip}, limit={limit})")
     commits = await crud.get_commits(db, skip=skip, limit=limit)
+    logger.info(f"Found {len(commits)} commits")
     return [
         schemas.Commit(
             sha=commit.sha,
@@ -51,10 +131,14 @@ async def get_commits(
 
 @app.get("/api/commits/{sha}", response_model=schemas.Commit)
 async def get_commit(sha: str, db: AsyncSession = Depends(get_database)):
+    logger = logging.getLogger(__name__)
+    logger.info(f"Fetching commit by SHA: {sha}")
     commit = await crud.get_commit_by_sha(db, sha=sha)
     if commit is None:
+        logger.warning(f"Commit not found: {sha}")
         raise HTTPException(status_code=404, detail="Commit not found")
     
+    logger.info(f"Found commit: {commit.sha[:8]} by {commit.author}")
     return schemas.Commit(
         sha=commit.sha,
         timestamp=commit.timestamp,
@@ -71,7 +155,10 @@ async def get_commit(sha: str, db: AsyncSession = Depends(get_database)):
 # Binaries endpoints
 @app.get("/api/binaries", response_model=List[schemas.Binary])
 async def get_binaries(db: AsyncSession = Depends(get_database)):
+    logger = logging.getLogger(__name__)
+    logger.info("Fetching all binaries")
     binaries = await crud.get_binaries(db)
+    logger.info(f"Found {len(binaries)} binaries")
     return [
         schemas.Binary(id=binary.id, name=binary.name, flags=binary.flags, description=binary.description)
         for binary in binaries
@@ -80,10 +167,14 @@ async def get_binaries(db: AsyncSession = Depends(get_database)):
 
 @app.get("/api/binaries/{binary_id}", response_model=schemas.Binary)
 async def get_binary(binary_id: str, db: AsyncSession = Depends(get_database)):
+    logger = logging.getLogger(__name__)
+    logger.info(f"Fetching binary: {binary_id}")
     binary = await crud.get_binary_by_id(db, binary_id=binary_id)
     if binary is None:
+        logger.warning(f"Binary not found: {binary_id}")
         raise HTTPException(status_code=404, detail="Binary not found")
     
+    logger.info(f"Found binary: {binary.name} with {len(binary.flags)} flags")
     return schemas.Binary(id=binary.id, name=binary.name, flags=binary.flags, description=binary.description)
 
 
@@ -174,6 +265,19 @@ async def get_benchmark_results(
     limit: int = 10000,
     db: AsyncSession = Depends(get_database)
 ):
+    logger = logging.getLogger(__name__)
+    filters = []
+    if benchmark_name:
+        filters.append(f"benchmark={benchmark_name}")
+    if binary_id:
+        filters.append(f"binary={binary_id}")
+    if environment_id:
+        filters.append(f"environment={environment_id}")
+    if python_major:
+        filters.append(f"python={python_major}.{python_minor or 'x'}")
+    
+    filter_str = f" with filters: {', '.join(filters)}" if filters else ""
+    logger.info(f"Fetching benchmark results (skip={skip}, limit={limit}){filter_str}")
     results = await crud.get_enriched_benchmark_results(
         db, 
         benchmark_name=benchmark_name,
@@ -185,6 +289,7 @@ async def get_benchmark_results(
         limit=limit
     )
     
+    logger.info(f"Found {len(results)} benchmark results")
     return [
         schemas.EnrichedBenchmarkResult(
             id=result["id"],
@@ -355,16 +460,17 @@ async def upload_benchmark_results(
         raise HTTPException(status_code=500, detail=f"Failed to upload benchmark results: {str(e)}")
 
 
-# Worker upload endpoint with validation
+# Worker upload endpoint with validation (requires authentication)
 @app.post("/api/upload-run", response_model=dict)
 async def upload_worker_run(
     upload_data: schemas.WorkerRunUpload,
-    db: AsyncSession = Depends(get_database)
+    db: AsyncSession = Depends(get_database),
+    current_token: models.AuthToken = Depends(get_current_token)
 ):
     import logging
     logger = logging.getLogger(__name__)
     
-    logger.info(f"Received upload request for binary_id='{upload_data.binary_id}', environment_id='{upload_data.environment_id}'")
+    logger.info(f"Authenticated upload request from token '{current_token.name}' for binary_id='{upload_data.binary_id}', environment_id='{upload_data.environment_id}'")
     logger.debug(f"Upload contains {len(upload_data.benchmark_results)} benchmark results")
     
     metadata = upload_data.metadata

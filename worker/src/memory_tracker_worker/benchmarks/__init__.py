@@ -225,7 +225,7 @@ def validate_binary_and_environment(binary_id: str, environment_id: str, server_
         raise ValueError(f"Failed to validate binary and environment: {e}")
 
 
-def upload_results_to_server(output_dir: Path, binary_id: str, environment_id: str, server_url: str = "http://localhost:8000") -> None:
+def upload_results_to_server(output_dir: Path, binary_id: str, environment_id: str, auth_token: str = None, server_url: str = "http://localhost:8000") -> None:
     """Upload benchmark results to the server."""
     logger.info(f"Uploading results from {output_dir} to {server_url}")
     logger.info(f"Using binary_id: {binary_id}, environment_id: {environment_id}")
@@ -269,10 +269,18 @@ def upload_results_to_server(output_dir: Path, binary_id: str, environment_id: s
         "environment_id": environment_id
     }
     
+    # Prepare headers with authentication
+    headers = {"Content-Type": "application/json"}
+    if auth_token:
+        headers["Authorization"] = f"Bearer {auth_token}"
+        logger.debug("Using authentication token for upload")
+    else:
+        logger.warning("No authentication token provided - upload may fail")
+    
     # Upload to server
     try:
         import requests
-        response = requests.post(f"{server_url}/api/upload-run", json=upload_data, timeout=30)
+        response = requests.post(f"{server_url}/api/upload-run", json=upload_data, headers=headers, timeout=30)
         response.raise_for_status()
         
         result = response.json()

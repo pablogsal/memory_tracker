@@ -199,6 +199,7 @@ def process_commit_with_temp_repo(
     binary_id: str,
     environment_id: str,
     force: bool = False,
+    auth_token: str = None,
 ) -> Optional[str]:
     """Process a single commit using a temporary repository copy."""
     temp_repo_path = None
@@ -221,7 +222,8 @@ def process_commit_with_temp_repo(
             verbose,
             binary_id,
             environment_id,
-            force
+            force,
+            auth_token
         )
         
     except Exception as e:
@@ -245,6 +247,7 @@ def process_commits_in_parallel(
     force: bool = False,
     max_workers: int = 1,
     batch_size: int = None,
+    auth_token: str = None,
 ) -> List[Tuple[git.Commit, Optional[str]]]:
     """Process commits in parallel batches."""
     if batch_size is None:
@@ -282,7 +285,8 @@ def process_commits_in_parallel(
                     verbose,
                     binary_id,
                     environment_id,
-                    force
+                    force,
+                    auth_token
                 )
                 future_to_commit[future] = commit
             
@@ -337,6 +341,7 @@ def process_commit(
     binary_id: str,
     environment_id: str,
     force: bool = False,
+    auth_token: str = None,
 ) -> Optional[str]:
     """Process a single commit."""
     build_dir = None
@@ -526,7 +531,7 @@ def process_commit(
             # Upload results to server
             logger.info(f"Uploading results for commit {commit.hexsha[:8]}")
             try:
-                upload_results_to_server(run_dir, binary_id=binary_id, environment_id=environment_id)
+                upload_results_to_server(run_dir, binary_id=binary_id, environment_id=environment_id, auth_token=auth_token)
             except Exception as e:
                 logger.warning(f"Failed to upload results for commit {commit.hexsha[:8]}: {e}")
                 logger.info("Results are still saved locally")
@@ -668,6 +673,13 @@ def benchmark_command(args):
     if args.max_workers > available_cpus:
         logger.warning(f"Using {args.max_workers} workers on a system with {available_cpus} CPUs. This may reduce performance.")
     
+    # Get authentication token from CLI or environment variable
+    auth_token = args.auth_token or os.getenv('MEMORY_TRACKER_TOKEN')
+    if not auth_token:
+        logger.error("Authentication token required. Provide via --auth-token or set MEMORY_TRACKER_TOKEN environment variable.")
+        sys.exit(1)
+    logger.info("Authentication token provided")
+    
     logger.info("Configuration:")
     logger.info(f"Repository: {repo_path}")
     logger.info(f"Commit expression: {args.commit_range}")
@@ -696,7 +708,8 @@ def benchmark_command(args):
             args.environment_id,
             args.force,
             args.max_workers,
-            args.batch_size
+            args.batch_size,
+            auth_token
         )
         errors = [(commit, error) for commit, error in results if error is not None]
     else:
@@ -712,7 +725,8 @@ def benchmark_command(args):
                 args.verbose,
                 args.binary_id,
                 args.environment_id,
-                args.force
+                args.force,
+                auth_token
             )
             if error:
                 errors.append((commit, error))
@@ -837,6 +851,10 @@ def parse_args():
         type=int,
         default=None,
         help='Number of commits to process in each parallel batch. Useful for memory management with large commit ranges. (default: same as max-workers)'
+    )
+    benchmark_parser.add_argument(
+        '--auth-token',
+        help='Authentication token for uploading results to server. Can also be set via MEMORY_TRACKER_TOKEN environment variable.'
     )
     benchmark_parser.set_defaults(func=benchmark_command)
     

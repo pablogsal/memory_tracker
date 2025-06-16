@@ -354,12 +354,12 @@ export default function BenchmarkTrendPage() {
             </div>
             <div className="flex-1 h-px bg-border"></div>
             <div className="flex items-center gap-2">
-              <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${selectedBinaryId ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>2</div>
+              <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${selectedBinaryId && availableEnvironments.length > 0 ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>2</div>
               <span>Select Environment</span>
             </div>
             <div className="flex-1 h-px bg-border"></div>
             <div className="flex items-center gap-2">
-              <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${selectedBinaryId && selectedEnvironmentId ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>3</div>
+              <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${selectedBinaryId && availableEnvironments.length > 0 && selectedEnvironmentId ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>3</div>
               <span>Configure & View</span>
             </div>
           </div>
@@ -388,16 +388,16 @@ export default function BenchmarkTrendPage() {
             {/* Step 2: Environment Selection */}
             <div>
               <Label htmlFor="environment-select" className="flex items-center gap-2">
-                <div className={`w-4 h-4 rounded-full flex items-center justify-center text-xs font-bold ${selectedBinaryId ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>2</div>
+                <div className={`w-4 h-4 rounded-full flex items-center justify-center text-xs font-bold ${selectedBinaryId && availableEnvironments.length > 0 ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>2</div>
                 Environment
               </Label>
               <Select 
                 value={selectedEnvironmentId} 
                 onValueChange={setSelectedEnvironmentId}
-                disabled={!selectedBinaryId}
+                disabled={!selectedBinaryId || availableEnvironments.length === 0}
               >
-                <SelectTrigger id="environment-select" className={!selectedBinaryId ? 'opacity-50' : ''}>
-                  <SelectValue placeholder={!selectedBinaryId ? "First select a binary" : "Select Environment"} />
+                <SelectTrigger id="environment-select" className={!selectedBinaryId || availableEnvironments.length === 0 ? 'opacity-50' : ''}>
+                  <SelectValue placeholder={!selectedBinaryId ? "First select a binary" : availableEnvironments.length === 0 ? "No environments available for this binary" : "Select Environment"} />
                 </SelectTrigger>
                 <SelectContent>
                   {availableEnvironments.map(environment => (
@@ -413,7 +413,7 @@ export default function BenchmarkTrendPage() {
           {/* Step 3: Additional Configuration */}
           <div className="border-t pt-6">
             <h4 className="text-sm font-semibold mb-4 flex items-center gap-2">
-              <div className={`w-4 h-4 rounded-full flex items-center justify-center text-xs font-bold ${selectedBinaryId && selectedEnvironmentId ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>3</div>
+              <div className={`w-4 h-4 rounded-full flex items-center justify-center text-xs font-bold ${selectedBinaryId && availableEnvironments.length > 0 && selectedEnvironmentId ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>3</div>
               Additional Configuration
             </h4>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -422,10 +422,10 @@ export default function BenchmarkTrendPage() {
                 <Select 
                   value={selectedPythonVersionKey} 
                   onValueChange={setSelectedPythonVersionKey}
-                  disabled={!selectedBinaryId || !selectedEnvironmentId}
+                  disabled={!selectedBinaryId || availableEnvironments.length === 0 || !selectedEnvironmentId}
                 >
-                  <SelectTrigger id="python-version-select" className={!selectedBinaryId || !selectedEnvironmentId ? 'opacity-50' : ''}>
-                    <SelectValue placeholder={!selectedBinaryId || !selectedEnvironmentId ? "Select binary & environment first" : "Select Python Version"} />
+                  <SelectTrigger id="python-version-select" className={!selectedBinaryId || availableEnvironments.length === 0 || !selectedEnvironmentId ? 'opacity-50' : ''}>
+                    <SelectValue placeholder={!selectedBinaryId ? "Select binary first" : availableEnvironments.length === 0 ? "No environments available" : !selectedEnvironmentId ? "Select environment first" : "Select Python Version"} />
                   </SelectTrigger>
                   <SelectContent>
                     {pythonVersionOptions.map(v => (
@@ -444,9 +444,9 @@ export default function BenchmarkTrendPage() {
                 <Select 
                   value={selectedMetric} 
                   onValueChange={(val) => setSelectedMetric(val as MetricKey)}
-                  disabled={!selectedBinaryId || !selectedEnvironmentId}
+                  disabled={!selectedBinaryId || availableEnvironments.length === 0 || !selectedEnvironmentId}
                 >
-                  <SelectTrigger id="metric-select" className={!selectedBinaryId || !selectedEnvironmentId ? 'opacity-50' : ''}>
+                  <SelectTrigger id="metric-select" className={!selectedBinaryId || availableEnvironments.length === 0 || !selectedEnvironmentId ? 'opacity-50' : ''}>
                     <SelectValue placeholder="Select Metric" />
                   </SelectTrigger>
                   <SelectContent>

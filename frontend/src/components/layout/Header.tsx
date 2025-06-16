@@ -1,7 +1,7 @@
 "use client";
 
 import Link from 'next/link';
-import { Pyramid, LineChart, GitCompareArrows, ListChecks, Sun, Moon } from 'lucide-react'; // Removed UploadCloud
+import { Code2, LineChart, GitCompareArrows, ListChecks, Sun, Moon } from 'lucide-react'; // Removed UploadCloud
 import { useTheme } from 'next-themes';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
@@ -31,7 +31,7 @@ export default function Header() {
       <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="container flex h-16 items-center justify-between">
           <Link href="/" className="flex items-center gap-2 text-lg font-headline font-bold">
-            <Pyramid className="h-7 w-7 text-primary" />
+            <Code2 className="h-7 w-7 text-primary" />
             <span>CPython Memory Insights</span>
           </Link>
           <div className="flex items-center gap-2">
@@ -63,7 +63,7 @@ export default function Header() {
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container flex h-16 items-center justify-between">
         <Link href="/" className="flex items-center gap-2 text-lg font-headline font-bold">
-          <Pyramid className="h-7 w-7 text-primary" />
+          <Code2 className="h-7 w-7 text-primary" />
           <span>CPython Memory Insights</span>
         </Link>
 
@@ -85,7 +85,7 @@ export default function Header() {
               <SheetContent side="right" className="w-[300px] sm:w-[400px]">
                 <div className="p-4">
                 <Link href="/" className="flex items-center gap-2 text-lg font-headline font-bold mb-6" onClick={() => setIsMobileMenuOpen(false)}>
-                  <Pyramid className="h-7 w-7 text-primary" />
+                  <Code2 className="h-7 w-7 text-primary" />
                   <span>CPython Memory Insights</span>
                 </Link>
                   <nav className="flex flex-col gap-2">
