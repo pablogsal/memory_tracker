@@ -6,7 +6,9 @@ import argparse
 import shutil
 import logging
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Optional, Tuple, List
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from multiprocessing import cpu_count
 import git
 
 # Get logger (will be configured later based on verbosity)
@@ -135,6 +137,180 @@ def check_build_environment(repo_path: Path) -> Tuple[bool, str]:
     logger.info("Build environment is valid")
     return True, ""
 
+def create_temp_repo_copy(source_repo_path: Path, commit_sha: str) -> Path:
+    """Create a temporary copy of the repository at a specific commit using shallow clone."""
+    logger.debug(f"Creating temporary repo copy for commit {commit_sha[:8]}")
+    
+    # Create temporary directory
+    temp_dir = Path(tempfile.mkdtemp(prefix=f'cpython_copy_{commit_sha[:8]}_'))
+    
+    try:
+        # Use git worktree to create a clean copy at the specific commit
+        # This is more efficient than full copies and avoids .git directory
+        source_repo = git.Repo(source_repo_path)
+        
+        # Create a temporary worktree
+        logger.debug(f"Creating worktree at {temp_dir} for commit {commit_sha}")
+        source_repo.git.worktree('add', str(temp_dir), commit_sha)
+        
+        # Remove the .git file (worktree link) to make it a standalone directory
+        git_file = temp_dir / '.git'
+        if git_file.exists():
+            git_file.unlink()
+            
+        logger.debug(f"Successfully created repo copy at {temp_dir}")
+        return temp_dir
+        
+    except Exception as e:
+        # Clean up on failure
+        if temp_dir.exists():
+            shutil.rmtree(temp_dir, ignore_errors=True)
+        logger.error(f"Failed to create temp repo copy: {e}")
+        raise
+
+def cleanup_temp_repo_copy(temp_repo_path: Path, source_repo_path: Path) -> None:
+    """Clean up temporary repository copy and associated worktree."""
+    try:
+        # Remove the worktree from the source repo
+        source_repo = git.Repo(source_repo_path)
+        try:
+            # Try to remove worktree reference (might fail if already cleaned up)
+            source_repo.git.worktree('remove', str(temp_repo_path), '--force')
+        except git.GitCommandError:
+            # Worktree might already be removed, that's fine
+            pass
+        
+        # Remove the temporary directory
+        if temp_repo_path.exists():
+            shutil.rmtree(temp_repo_path, ignore_errors=True)
+            logger.debug(f"Cleaned up temporary repo copy: {temp_repo_path}")
+            
+    except Exception as e:
+        logger.warning(f"Failed to clean up temp repo copy {temp_repo_path}: {e}")
+
+def process_commit_with_temp_repo(
+    commit_sha: str,
+    commit_message: str,
+    source_repo_path: Path,
+    output_dir: Path,
+    configure_flags: str,
+    make_flags: str,
+    verbose: int,
+    binary_id: str,
+    environment_id: str,
+    force: bool = False,
+) -> Optional[str]:
+    """Process a single commit using a temporary repository copy."""
+    temp_repo_path = None
+    try:
+        # Create temporary repo copy
+        temp_repo_path = create_temp_repo_copy(source_repo_path, commit_sha)
+        
+        # Create a fake commit object for compatibility with existing code
+        # We need to get the actual commit object to preserve all attributes
+        source_repo = git.Repo(source_repo_path)
+        actual_commit = source_repo.commit(commit_sha)
+        
+        # Process the commit using the temporary repo
+        return process_commit(
+            actual_commit,
+            temp_repo_path,
+            output_dir,
+            configure_flags,
+            make_flags,
+            verbose,
+            binary_id,
+            environment_id,
+            force
+        )
+        
+    except Exception as e:
+        error_msg = f"Unexpected error processing commit {commit_sha[:8]}: {e}"
+        logger.exception(error_msg)
+        return error_msg
+    finally:
+        # Clean up temporary repo copy
+        if temp_repo_path:
+            cleanup_temp_repo_copy(temp_repo_path, source_repo_path)
+
+def process_commits_in_parallel(
+    commits: List[git.Commit],
+    source_repo_path: Path,
+    output_dir: Path,
+    configure_flags: str,
+    make_flags: str,
+    verbose: int,
+    binary_id: str,
+    environment_id: str,
+    force: bool = False,
+    max_workers: int = 1,
+    batch_size: int = None,
+) -> List[Tuple[git.Commit, Optional[str]]]:
+    """Process commits in parallel batches."""
+    if batch_size is None:
+        batch_size = max_workers
+    
+    logger.info(f"Processing {len(commits)} commits in parallel (max_workers={max_workers}, batch_size={batch_size})")
+    
+    results = []
+    
+    # Process commits in batches
+    for i in range(0, len(commits), batch_size):
+        batch = commits[i:i + batch_size]
+        logger.info(f"Processing batch {i//batch_size + 1}: commits {i+1}-{min(i+batch_size, len(commits))}")
+        
+        # Prepare commit data for parallel processing
+        commit_data = [
+            (commit.hexsha, commit.message.splitlines()[0] if commit.message else "")
+            for commit in batch
+        ]
+        
+        # Process batch in parallel
+        batch_results = []
+        with ThreadPoolExecutor(max_workers=min(max_workers, len(batch))) as executor:
+            # Submit jobs
+            future_to_commit = {}
+            for commit, (commit_sha, commit_message) in zip(batch, commit_data):
+                future = executor.submit(
+                    process_commit_with_temp_repo,
+                    commit_sha,
+                    commit_message,
+                    source_repo_path,
+                    output_dir,
+                    configure_flags,
+                    make_flags,
+                    verbose,
+                    binary_id,
+                    environment_id,
+                    force
+                )
+                future_to_commit[future] = commit
+            
+            # Collect results as they complete
+            for future in as_completed(future_to_commit):
+                commit = future_to_commit[future]
+                try:
+                    error = future.result()
+                    batch_results.append((commit, error))
+                    
+                    if error:
+                        logger.error(f"Batch processing failed for commit {commit.hexsha[:8]}: {error}")
+                    else:
+                        logger.info(f"Batch processing completed for commit {commit.hexsha[:8]}")
+                        
+                except Exception as e:
+                    error_msg = f"Parallel processing exception for commit {commit.hexsha[:8]}: {e}"
+                    logger.exception(error_msg)
+                    batch_results.append((commit, error_msg))
+        
+        results.extend(batch_results)
+        
+        # Log batch completion
+        batch_errors = [r for r in batch_results if r[1] is not None]
+        logger.info(f"Batch {i//batch_size + 1} completed: {len(batch_results) - len(batch_errors)}/{len(batch_results)} successful")
+    
+    return results
+
 def check_output_directory(output_dir: Path) -> Tuple[bool, str]:
     """Check if the output directory is valid and writable."""
     logger.debug(f"Checking output directory: {output_dir}")
@@ -166,12 +342,19 @@ def process_commit(
     build_dir = None
     try:
         logger.info(f"Processing commit {commit.hexsha[:8]}")
-        logger.debug(f"Commit message: {commit.message.splitlines()[0]}")
+        logger.debug(f"Commit message: {commit.message.splitlines()[0] if commit.message else ''}")
         
-        # Checkout commit
-        logger.info(f"Checking out commit {commit.hexsha[:8]}")
-        repo = git.Repo(repo_path)
-        repo.git.checkout(commit.hexsha)
+        # Check if this is a temporary repo copy (no .git directory)
+        # If so, skip checkout since the repo is already at the right commit
+        git_dir = repo_path / '.git'
+        if git_dir.exists():
+            # This is a full git repo, checkout the commit
+            logger.info(f"Checking out commit {commit.hexsha[:8]}")
+            repo = git.Repo(repo_path)
+            repo.git.checkout(commit.hexsha)
+        else:
+            # This is a temporary copy already at the right commit
+            logger.debug(f"Using temporary repo copy already at commit {commit.hexsha[:8]}")
         
         # Create unique directory for this run
         run_dir = output_dir / commit.hexsha
@@ -469,23 +652,41 @@ def benchmark_command(args):
         logger.error(f"Failed to get commits: {e}")
         sys.exit(1)
     
+    # Validate and set defaults for parallel processing arguments
+    if args.max_workers < 1:
+        logger.error(f"Invalid max-workers value: {args.max_workers}. Must be >= 1")
+        sys.exit(1)
+    
+    if args.batch_size is None:
+        args.batch_size = args.max_workers
+    elif args.batch_size < 1:
+        logger.error(f"Invalid batch-size value: {args.batch_size}. Must be >= 1")
+        sys.exit(1)
+    
+    # Warn if using more workers than available CPUs
+    available_cpus = cpu_count()
+    if args.max_workers > available_cpus:
+        logger.warning(f"Using {args.max_workers} workers on a system with {available_cpus} CPUs. This may reduce performance.")
+    
     logger.info("Configuration:")
     logger.info(f"Repository: {repo_path}")
     logger.info(f"Commit expression: {args.commit_range}")
     logger.info(f"Output directory: {args.output_dir}")
     logger.info(f"Configure flags: {args.configure_flags}")
     logger.info(f"Make flags: {args.make_flags}")
+    logger.info(f"Max workers: {args.max_workers}")
+    logger.info(f"Batch size: {args.batch_size}")
     logger.info(f"Number of commits to process: {len(commits)}")
     if len(commits) > 0:
         logger.info("Commits to process:")
         for commit in commits:
             logger.info(f"  {commit.hexsha[:8]} - {commit.message.splitlines()[0]}")
     
-    # Process commits sequentially
-    errors = []
-    for commit in commits:
-        error = process_commit(
-            commit,
+    # Process commits (parallel or sequential based on max_workers)
+    if args.max_workers > 1:
+        logger.info(f"Using parallel processing with {args.max_workers} workers and batch size {args.batch_size}")
+        results = process_commits_in_parallel(
+            commits,
             repo_path,
             args.output_dir,
             args.configure_flags,
@@ -493,10 +694,28 @@ def benchmark_command(args):
             args.verbose,
             args.binary_id,
             args.environment_id,
-            args.force
+            args.force,
+            args.max_workers,
+            args.batch_size
         )
-        if error:
-            errors.append((commit, error))
+        errors = [(commit, error) for commit, error in results if error is not None]
+    else:
+        logger.info("Using sequential processing")
+        errors = []
+        for commit in commits:
+            error = process_commit(
+                commit,
+                repo_path,
+                args.output_dir,
+                args.configure_flags,
+                args.make_flags,
+                args.verbose,
+                args.binary_id,
+                args.environment_id,
+                args.force
+            )
+            if error:
+                errors.append((commit, error))
     
     # Print final status
     if errors:
@@ -606,6 +825,18 @@ def parse_args():
         '-f', '--force',
         action='store_true',
         help='Force overwrite existing output directories for commits'
+    )
+    benchmark_parser.add_argument(
+        '--max-workers', '-j',
+        type=int,
+        default=1,
+        help='Maximum number of parallel workers. Creates temporary repo copies for each worker to avoid conflicts. (default: 1 for sequential processing)'
+    )
+    benchmark_parser.add_argument(
+        '--batch-size', '-b',
+        type=int,
+        default=None,
+        help='Number of commits to process in each parallel batch. Useful for memory management with large commit ranges. (default: same as max-workers)'
     )
     benchmark_parser.set_defaults(func=benchmark_command)
     
