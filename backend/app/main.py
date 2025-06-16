@@ -87,21 +87,70 @@ async def get_binary(binary_id: str, db: AsyncSession = Depends(get_database)):
     return schemas.Binary(id=binary.id, name=binary.name, flags=binary.flags)
 
 
+@app.get("/api/binaries/{binary_id}/environments", response_model=List[dict])
+async def get_environments_for_binary(binary_id: str, db: AsyncSession = Depends(get_database)):
+    binary = await crud.get_binary_by_id(db, binary_id=binary_id)
+    if binary is None:
+        raise HTTPException(status_code=404, detail="Binary not found")
+    
+    environments = await crud.get_environments_for_binary(db, binary_id=binary_id)
+    return environments
+
+
+@app.get("/api/binaries/{binary_id}/environments/{environment_id}/commits", response_model=List[dict])
+async def get_commits_for_binary_and_environment(
+    binary_id: str, 
+    environment_id: str, 
+    db: AsyncSession = Depends(get_database)
+):
+    binary = await crud.get_binary_by_id(db, binary_id=binary_id)
+    if binary is None:
+        raise HTTPException(status_code=404, detail="Binary not found")
+    
+    environment = await crud.get_environment_by_id(db, environment_id=environment_id)
+    if environment is None:
+        raise HTTPException(status_code=404, detail="Environment not found")
+    
+    commits = await crud.get_commits_for_binary_and_environment(db, binary_id=binary_id, environment_id=environment_id)
+    return commits
+
+
+# Environments endpoints
+@app.get("/api/environments", response_model=List[schemas.Environment])
+async def get_environments(db: AsyncSession = Depends(get_database)):
+    environments = await crud.get_environments(db)
+    return [
+        schemas.Environment(id=env.id, name=env.name, description=env.description)
+        for env in environments
+    ]
+
+
+@app.get("/api/environments/{environment_id}", response_model=schemas.Environment)
+async def get_environment(environment_id: str, db: AsyncSession = Depends(get_database)):
+    environment = await crud.get_environment_by_id(db, environment_id=environment_id)
+    if environment is None:
+        raise HTTPException(status_code=404, detail="Environment not found")
+    
+    return schemas.Environment(id=environment.id, name=environment.name, description=environment.description)
+
+
 # Runs endpoints
 @app.get("/api/runs", response_model=List[schemas.Run])
 async def get_runs(
     commit_sha: Optional[str] = None,
     binary_id: Optional[str] = None,
+    environment_id: Optional[str] = None,
     skip: int = 0,
     limit: int = 100,
     db: AsyncSession = Depends(get_database)
 ):
-    runs = await crud.get_runs(db, commit_sha=commit_sha, binary_id=binary_id, skip=skip, limit=limit)
+    runs = await crud.get_runs(db, commit_sha=commit_sha, binary_id=binary_id, environment_id=environment_id, skip=skip, limit=limit)
     return [
         schemas.Run(
             run_id=run.run_id,
             commit_sha=run.commit_sha,
             binary_id=run.binary_id,
+            environment_id=run.environment_id,
             python_version=schemas.PythonVersion(
                 major=run.python_major,
                 minor=run.python_minor,
@@ -118,6 +167,7 @@ async def get_runs(
 async def get_benchmark_results(
     benchmark_name: Optional[str] = None,
     binary_id: Optional[str] = None,
+    environment_id: Optional[str] = None,
     python_major: Optional[int] = None,
     python_minor: Optional[int] = None,
     skip: int = 0,
@@ -128,6 +178,7 @@ async def get_benchmark_results(
         db, 
         benchmark_name=benchmark_name,
         binary_id=binary_id,
+        environment_id=environment_id,
         python_major=python_major,
         python_minor=python_minor,
         skip=skip, 
@@ -142,6 +193,7 @@ async def get_benchmark_results(
             result_json=schemas.BenchmarkResultJson(**result["result_json"]),
             commit=schemas.Commit(**result["commit"]),
             binary=schemas.Binary(**result["binary"]),
+            environment=schemas.Environment(**result["environment"]),
             run_python_version=schemas.PythonVersion(**result["run_python_version"])
         )
         for result in results
@@ -153,6 +205,7 @@ async def get_benchmark_results(
 async def get_diff_table(
     commit_sha: str,
     binary_id: str,
+    environment_id: str,
     metric_key: str = "high_watermark_bytes",
     db: AsyncSession = Depends(get_database)
 ):
@@ -161,16 +214,16 @@ async def get_diff_table(
     if not selected_commit:
         raise HTTPException(status_code=404, detail="Commit not found")
     
-    # Get all benchmark names for this commit and binary
-    runs = await crud.get_runs(db, commit_sha=commit_sha, binary_id=binary_id)
+    # Get all benchmark names for this commit, binary, and environment
+    runs = await crud.get_runs(db, commit_sha=commit_sha, binary_id=binary_id, environment_id=environment_id)
     if not runs:
-        raise HTTPException(status_code=404, detail="No runs found for this commit and binary")
+        raise HTTPException(status_code=404, detail="No runs found for this commit, binary, and environment")
     
     current_run = runs[0]  # Get the latest run
     current_results = await crud.get_benchmark_results(db, run_id=current_run.run_id)
     
-    # Efficiently find the previous commit that was tested with the same binary
-    prev_commit = await crud.get_previous_commit_with_binary(db, selected_commit, binary_id)
+    # Efficiently find the previous commit that was tested with the same binary and environment
+    prev_commit = await crud.get_previous_commit_with_binary_and_environment(db, selected_commit, binary_id, environment_id)
     
     rows = []
     for result in current_results:
@@ -197,7 +250,7 @@ async def get_diff_table(
         # Try to find previous commit's data for comparison
         if prev_commit:
             
-            prev_runs = await crud.get_runs(db, commit_sha=prev_commit.sha, binary_id=binary_id)
+            prev_runs = await crud.get_runs(db, commit_sha=prev_commit.sha, binary_id=binary_id, environment_id=environment_id)
             if prev_runs:
                 prev_results = await crud.get_benchmark_results(db, run_id=prev_runs[0].run_id)
                 prev_result = next((r for r in prev_results if r.benchmark_name == result.benchmark_name), None)
@@ -257,12 +310,21 @@ async def upload_benchmark_results(
             detail=f"Binary {upload_data.binary_id} not found. Please create the binary first."
         )
     
+    # Check if environment exists
+    environment = await crud.get_environment_by_id(db, environment_id=upload_data.environment_id)
+    if not environment:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Environment {upload_data.environment_id} not found. Please create the environment first."
+        )
+    
     # Create a new run
-    run_id = f"run_{upload_data.commit_sha[:8]}_{upload_data.binary_id}_{int(datetime.now().timestamp())}"
+    run_id = f"run_{upload_data.commit_sha[:8]}_{upload_data.binary_id}_{upload_data.environment_id}_{int(datetime.now().timestamp())}"
     run_data = schemas.RunCreate(
         run_id=run_id,
         commit_sha=upload_data.commit_sha,
         binary_id=upload_data.binary_id,
+        environment_id=upload_data.environment_id,
         python_version=upload_data.python_version,
         timestamp=datetime.now()
     )

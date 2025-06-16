@@ -36,12 +36,23 @@ class Binary(Base):
     runs = relationship("Run", back_populates="binary")
 
 
+class Environment(Base):
+    __tablename__ = "environments"
+    
+    id = Column(String(50), primary_key=True)
+    name = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    
+    runs = relationship("Run", back_populates="environment")
+
+
 class Run(Base):
     __tablename__ = "runs"
     
     run_id = Column(String(100), primary_key=True)
     commit_sha = Column(String(40), ForeignKey("commits.sha"), nullable=False)
     binary_id = Column(String(50), ForeignKey("binaries.id"), nullable=False)
+    environment_id = Column(String(50), ForeignKey("environments.id"), nullable=False)
     python_major = Column(Integer, nullable=False)
     python_minor = Column(Integer, nullable=False)
     python_patch = Column(Integer, nullable=False)
@@ -49,13 +60,15 @@ class Run(Base):
     
     commit = relationship("Commit", back_populates="runs")
     binary = relationship("Binary", back_populates="runs")
+    environment = relationship("Environment", back_populates="runs")
     benchmark_results = relationship("BenchmarkResult", back_populates="run")
     
     __table_args__ = (
-        Index('idx_runs_commit_binary', 'commit_sha', 'binary_id'),
+        Index('idx_runs_commit_binary_env', 'commit_sha', 'binary_id', 'environment_id'),
         Index('idx_runs_timestamp', 'timestamp'),
         Index('idx_runs_python_version', 'python_major', 'python_minor', 'python_patch'),
-        Index('idx_runs_binary_timestamp', 'binary_id', 'timestamp'),  # For efficient previous commit with binary lookup
+        Index('idx_runs_binary_env_timestamp', 'binary_id', 'environment_id', 'timestamp'),  # For efficient previous commit with binary+env lookup
+        Index('idx_runs_env_timestamp', 'environment_id', 'timestamp'),  # For environment-based queries
     )
 
 

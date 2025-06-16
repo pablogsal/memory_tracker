@@ -20,7 +20,7 @@ import {
   Legend,
   ResponsiveContainer,
 } from 'recharts';
-import type { EnrichedBenchmarkResult, MetricKey, PythonVersionFilterOption, Binary } from '@/lib/types';
+import type { EnrichedBenchmarkResult, MetricKey, PythonVersionFilterOption, Binary, Environment } from '@/lib/types';
 import { METRIC_OPTIONS } from '@/lib/types';
 import { api } from '@/lib/api';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -37,6 +37,8 @@ const formatBytes = (bytes: number, decimals = 2) => {
 
 export default function BenchmarkTrendPage() {
   const [binaries, setBinaries] = useState<Binary[]>([]);
+  const [environments, setEnvironments] = useState<Environment[]>([]);
+  const [availableEnvironments, setAvailableEnvironments] = useState<Environment[]>([]);
   const [pythonVersionOptions, setPythonVersionOptions] = useState<PythonVersionFilterOption[]>([]);
   const [benchmarkResults, setBenchmarkResults] = useState<EnrichedBenchmarkResult[]>([]);
   const [allBenchmarkNames, setAllBenchmarkNames] = useState<string[]>([]);
@@ -44,6 +46,7 @@ export default function BenchmarkTrendPage() {
   const [error, setError] = useState<string | null>(null);
 
   const [selectedBinaryId, setSelectedBinaryId] = useState<string | undefined>();
+  const [selectedEnvironmentId, setSelectedEnvironmentId] = useState<string | undefined>();
   const [selectedPythonVersionKey, setSelectedPythonVersionKey] = useState<string | undefined>();
   const [selectedMetric, setSelectedMetric] = useState<MetricKey>(METRIC_OPTIONS[0].value);
   const [selectedBenchmarks, setSelectedBenchmarks] = useState<string[]>([]);
@@ -59,13 +62,15 @@ export default function BenchmarkTrendPage() {
         setLoading(true);
         setError(null);
         
-        const [binariesData, pythonVersionsData, benchmarkResultsData] = await Promise.all([
+        const [binariesData, environmentsData, pythonVersionsData, benchmarkResultsData] = await Promise.all([
           api.getBinaries(),
+          api.getEnvironments(),
           api.getPythonVersions(),
           api.getBenchmarkResults({ limit: 10000 })
         ]);
         
         setBinaries(binariesData);
+        setEnvironments(environmentsData);
         setPythonVersionOptions(pythonVersionsData);
         setBenchmarkResults(benchmarkResultsData);
         
@@ -76,6 +81,9 @@ export default function BenchmarkTrendPage() {
         // Set initial selections
         if (binariesData.length > 0 && !selectedBinaryId) {
           setSelectedBinaryId(binariesData[0].id);
+        }
+        if (environmentsData.length > 0 && !selectedEnvironmentId) {
+          setSelectedEnvironmentId(environmentsData[0].id);
         }
         if (pythonVersionsData.length > 0 && !selectedPythonVersionKey) {
           setSelectedPythonVersionKey(pythonVersionsData[0].label);
@@ -95,6 +103,35 @@ export default function BenchmarkTrendPage() {
     }
   }, [mounted]);
 
+  // Update available environments when binary is selected
+  useEffect(() => {
+    async function updateAvailableEnvironments() {
+      if (!selectedBinaryId) {
+        setAvailableEnvironments([]);
+        setSelectedEnvironmentId(undefined);
+        return;
+      }
+
+      try {
+        const environmentsForBinary = await api.getEnvironmentsForBinary(selectedBinaryId);
+        const filteredEnvironments = environments.filter(env => 
+          environmentsForBinary.some(envData => envData.id === env.id)
+        );
+        setAvailableEnvironments(filteredEnvironments);
+        
+        // Reset environment selection if current one is not available
+        if (selectedEnvironmentId && !filteredEnvironments.find(e => e.id === selectedEnvironmentId)) {
+          setSelectedEnvironmentId(filteredEnvironments.length > 0 ? filteredEnvironments[0].id : undefined);
+        }
+      } catch (err) {
+        console.error('Failed to load environments for binary:', err);
+        setAvailableEnvironments([]);
+      }
+    }
+
+    updateAvailableEnvironments();
+  }, [selectedBinaryId, environments, selectedEnvironmentId]);
+
   // Ensure initial benchmark selection after data loads
   useEffect(() => {
     if (!loading && allBenchmarkNames.length > 0 && selectedBenchmarks.length === 0) {
@@ -103,7 +140,7 @@ export default function BenchmarkTrendPage() {
   }, [loading, allBenchmarkNames, selectedBenchmarks.length]);
 
   const filteredData = useMemo(() => {
-    if (!selectedBinaryId || !selectedPythonVersionKey || selectedBenchmarks.length === 0) return [];
+    if (!selectedBinaryId || !selectedEnvironmentId || !selectedPythonVersionKey || selectedBenchmarks.length === 0) return [];
     
     const versionOption = pythonVersionOptions.find(v => v.label === selectedPythonVersionKey);
     if (!versionOption) return [];
@@ -115,12 +152,13 @@ export default function BenchmarkTrendPage() {
     return benchmarkResults
       .filter(result => 
         result.binary.id === selectedBinaryId &&
+        result.environment.id === selectedEnvironmentId &&
         result.commit.python_version.major === versionOption.major &&
         result.commit.python_version.minor === versionOption.minor &&
         benchmarkSet.has(result.benchmark_name)
       )
       .sort((a, b) => new Date(a.commit.timestamp).getTime() - new Date(b.commit.timestamp).getTime());
-  }, [selectedBinaryId, selectedPythonVersionKey, selectedBenchmarks, benchmarkResults, pythonVersionOptions]);
+  }, [selectedBinaryId, selectedEnvironmentId, selectedPythonVersionKey, selectedBenchmarks, benchmarkResults, pythonVersionOptions]);
 
   const chartData = useMemo(() => {
     const dataByCommit: { 
@@ -305,60 +343,126 @@ export default function BenchmarkTrendPage() {
       <Card>
         <CardHeader>
           <CardTitle>Filters</CardTitle>
-          <CardDescription>Select binary flags, Python version (Major.Minor), metric, and benchmarks to visualize trends.</CardDescription>
+          <CardDescription>Select binary flags, environment, Python version (Major.Minor), metric, and benchmarks to visualize trends.</CardDescription>
         </CardHeader>
-        <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          <div>
-            <Label htmlFor="binary-select">Binary Flags</Label>
-            <Select value={selectedBinaryId} onValueChange={setSelectedBinaryId}>
-              <SelectTrigger id="binary-select">
-                <SelectValue placeholder="Select Binary Flags" />
-              </SelectTrigger>
-              <SelectContent>
-                {binaries.map(binary => (
-                  <SelectItem key={binary.id} value={binary.id}>
-                    {binary.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          
-          <div>
-            <Label htmlFor="python-version-select">Python Version (Major.Minor)</Label>
-            <Select value={selectedPythonVersionKey} onValueChange={setSelectedPythonVersionKey}>
-              <SelectTrigger id="python-version-select">
-                <SelectValue placeholder="Select Python Version" />
-              </SelectTrigger>
-              <SelectContent>
-                {pythonVersionOptions.map(v => (
-                  <SelectItem key={v.label} value={v.label}>
-                    <div className="flex items-center gap-2">
-                       <Code2 className="h-4 w-4 text-primary/80" /> {v.label}
-                    </div>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+        <CardContent className="space-y-6">
+          {/* Step indicator */}
+          <div className="flex items-center gap-4 text-sm text-muted-foreground">
+            <div className="flex items-center gap-2">
+              <div className="w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold">1</div>
+              <span>Select Binary</span>
+            </div>
+            <div className="flex-1 h-px bg-border"></div>
+            <div className="flex items-center gap-2">
+              <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${selectedBinaryId ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>2</div>
+              <span>Select Environment</span>
+            </div>
+            <div className="flex-1 h-px bg-border"></div>
+            <div className="flex items-center gap-2">
+              <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${selectedBinaryId && selectedEnvironmentId ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>3</div>
+              <span>Configure & View</span>
+            </div>
           </div>
 
-          <div>
-            <Label htmlFor="metric-select">Metric</Label>
-            <Select value={selectedMetric} onValueChange={(val) => setSelectedMetric(val as MetricKey)}>
-              <SelectTrigger id="metric-select">
-                <SelectValue placeholder="Select Metric" />
-              </SelectTrigger>
-              <SelectContent>
-                {METRIC_OPTIONS.map(option => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Step 1: Binary Selection */}
+            <div>
+              <Label htmlFor="binary-select" className="flex items-center gap-2">
+                <div className="w-4 h-4 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold">1</div>
+                Binary Flags
+              </Label>
+              <Select value={selectedBinaryId} onValueChange={setSelectedBinaryId}>
+                <SelectTrigger id="binary-select">
+                  <SelectValue placeholder="Select Binary Flags" />
+                </SelectTrigger>
+                <SelectContent>
+                  {binaries.map(binary => (
+                    <SelectItem key={binary.id} value={binary.id}>
+                      {binary.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Step 2: Environment Selection */}
+            <div>
+              <Label htmlFor="environment-select" className="flex items-center gap-2">
+                <div className={`w-4 h-4 rounded-full flex items-center justify-center text-xs font-bold ${selectedBinaryId ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>2</div>
+                Environment
+              </Label>
+              <Select 
+                value={selectedEnvironmentId} 
+                onValueChange={setSelectedEnvironmentId}
+                disabled={!selectedBinaryId}
+              >
+                <SelectTrigger id="environment-select" className={!selectedBinaryId ? 'opacity-50' : ''}>
+                  <SelectValue placeholder={!selectedBinaryId ? "First select a binary" : "Select Environment"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableEnvironments.map(environment => (
+                    <SelectItem key={environment.id} value={environment.id}>
+                      {environment.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
-          <div className="lg:col-span-3">
+          {/* Step 3: Additional Configuration */}
+          <div className="border-t pt-6">
+            <h4 className="text-sm font-semibold mb-4 flex items-center gap-2">
+              <div className={`w-4 h-4 rounded-full flex items-center justify-center text-xs font-bold ${selectedBinaryId && selectedEnvironmentId ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>3</div>
+              Additional Configuration
+            </h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <Label htmlFor="python-version-select">Python Version (Major.Minor)</Label>
+                <Select 
+                  value={selectedPythonVersionKey} 
+                  onValueChange={setSelectedPythonVersionKey}
+                  disabled={!selectedBinaryId || !selectedEnvironmentId}
+                >
+                  <SelectTrigger id="python-version-select" className={!selectedBinaryId || !selectedEnvironmentId ? 'opacity-50' : ''}>
+                    <SelectValue placeholder={!selectedBinaryId || !selectedEnvironmentId ? "Select binary & environment first" : "Select Python Version"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {pythonVersionOptions.map(v => (
+                      <SelectItem key={v.label} value={v.label}>
+                        <div className="flex items-center gap-2">
+                           <Code2 className="h-4 w-4 text-primary/80" /> {v.label}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <Label htmlFor="metric-select">Metric</Label>
+                <Select 
+                  value={selectedMetric} 
+                  onValueChange={(val) => setSelectedMetric(val as MetricKey)}
+                  disabled={!selectedBinaryId || !selectedEnvironmentId}
+                >
+                  <SelectTrigger id="metric-select" className={!selectedBinaryId || !selectedEnvironmentId ? 'opacity-50' : ''}>
+                    <SelectValue placeholder="Select Metric" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {METRIC_OPTIONS.map(option => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+
+          {/* Benchmark Selection */}
+          <div className="border-t pt-6">
             <Label>Benchmarks (Select up to {lineColors.length})</Label>
             <Input 
               placeholder="Search benchmarks..." 
@@ -381,7 +485,7 @@ export default function BenchmarkTrendPage() {
                 ))}
               </div>
             </ScrollArea>
-             {selectedBenchmarks.length >= lineColors.length && <p className="text-xs text-muted-foreground mt-1">Maximum number of benchmarks selected for visualization.</p>}
+            {selectedBenchmarks.length >= lineColors.length && <p className="text-xs text-muted-foreground mt-1">Maximum number of benchmarks selected for visualization.</p>}
           </div>
         </CardContent>
       </Card>
@@ -394,7 +498,7 @@ export default function BenchmarkTrendPage() {
               Trend Chart
             </CardTitle>
             <CardDescription>
-              Showing {METRIC_OPTIONS.find(m=>m.value === selectedMetric)?.label} for {binaries.find(b=>b.id === selectedBinaryId)?.name} on Python {selectedPythonVersionKey}.x.
+              Showing {METRIC_OPTIONS.find(m=>m.value === selectedMetric)?.label} for {binaries.find(b=>b.id === selectedBinaryId)?.name} in {environments.find(e=>e.id === selectedEnvironmentId)?.name} on Python {selectedPythonVersionKey}.x.
             </CardDescription>
           </div>
           <DropdownMenu>
@@ -470,7 +574,7 @@ export default function BenchmarkTrendPage() {
             <div className="flex flex-col items-center justify-center h-96 text-muted-foreground">
               <AlertCircle className="w-16 h-16 mb-4" />
               <p className="text-lg">No data available for the selected filters.</p>
-              <p>Please select a binary, Python version, metric, and at least one benchmark, ensuring commits exist for that Python version.</p>
+              <p>Please select a binary, environment, Python version, metric, and at least one benchmark, ensuring commits exist for that combination.</p>
             </div>
           )}
         </CardContent>

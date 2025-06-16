@@ -41,10 +41,26 @@ class Binary(BinaryBase):
         from_attributes = True
 
 
+class EnvironmentBase(BaseModel):
+    id: str
+    name: str
+    description: Optional[str] = None
+
+
+class EnvironmentCreate(EnvironmentBase):
+    pass
+
+
+class Environment(EnvironmentBase):
+    class Config:
+        from_attributes = True
+
+
 class RunBase(BaseModel):
     run_id: str
     commit_sha: str
     binary_id: str
+    environment_id: str
     python_version: PythonVersion
     timestamp: datetime
 
@@ -93,6 +109,7 @@ class BenchmarkResult(BenchmarkResultBase):
 class EnrichedBenchmarkResult(BenchmarkResult):
     commit: Commit
     binary: Binary
+    environment: Environment
     run_python_version: PythonVersion
 
 
@@ -117,5 +134,6 @@ class PythonVersionFilterOption(BaseModel):
 class BenchmarkUpload(BaseModel):
     commit_sha: str
     binary_id: str
+    environment_id: str
     python_version: PythonVersion
     benchmark_results: List[BenchmarkResultJson]

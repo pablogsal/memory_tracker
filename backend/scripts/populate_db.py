@@ -77,6 +77,19 @@ def generate_binaries() -> List[schemas.BinaryCreate]:
     ]
 
 
+def generate_environments() -> List[schemas.EnvironmentCreate]:
+    """Generate standard environment configurations."""
+    return [
+        schemas.EnvironmentCreate(id="gcc-10", name="GCC 10", description="Compiled with GCC 10 compiler on Ubuntu 20.04"),
+        schemas.EnvironmentCreate(id="gcc-11", name="GCC 11", description="Compiled with GCC 11 compiler on Ubuntu 22.04"),
+        schemas.EnvironmentCreate(id="clang-14", name="Clang 14", description="Compiled with Clang 14 compiler"),
+        schemas.EnvironmentCreate(id="msvc-2022", name="MSVC 2022", description="Compiled with Microsoft Visual C++ 2022 on Windows"),
+        schemas.EnvironmentCreate(id="macos-arm64", name="macOS ARM64", description="Native compilation on Apple Silicon M1/M2"),
+        schemas.EnvironmentCreate(id="macos-x86", name="macOS x86_64", description="Intel x86_64 compilation on macOS"),
+        schemas.EnvironmentCreate(id="linux-arm64", name="Linux ARM64", description="Native ARM64 compilation on Linux"),
+    ]
+
+
 def generate_runs(commits: List[models.Commit], binaries: List[models.Binary], runs_per_commit: int = 6) -> List[schemas.RunCreate]:
     """Generate runs for commits and binaries."""
     runs = []
@@ -226,26 +239,44 @@ async def populate_database():
             await db.flush()
             print(f"✅ Created {len(binary_objects)} binaries")
             
-            # Generate runs: each commit x each binary = massive bulk insert
+            # Generate and bulk insert environments
+            print("Creating environments...")
+            environment_data = generate_environments()
+            environment_objects = [
+                models.Environment(id=env.id, name=env.name, description=env.description)
+                for env in environment_data
+            ]
+            db.add_all(environment_objects)
+            await db.flush()
+            print(f"✅ Created {len(environment_objects)} environments")
+            
+            # Generate runs: each commit x each binary x subset of environments
             print("Creating runs...")
             run_objects = []
             run_counter = 0
             
             for commit_obj in commit_objects:
                 for binary_obj in binary_objects:
-                    run_id = f"run_{commit_obj.sha[:8]}_{binary_obj.id}_{run_counter}"
-                    run_timestamp = commit_obj.timestamp + timedelta(minutes=random.randint(5, 60))
+                    # Not every binary is tested in every environment - create realistic distribution
+                    # Most binaries tested in 3-5 environments, some rare combinations
+                    num_environments = random.choices([2, 3, 4, 5], weights=[10, 40, 30, 20])[0]
+                    selected_environments = random.sample(environment_objects, min(num_environments, len(environment_objects)))
                     
-                    run_objects.append(models.Run(
-                        run_id=run_id,
-                        commit_sha=commit_obj.sha,
-                        binary_id=binary_obj.id,
-                        python_major=commit_obj.python_major,
-                        python_minor=commit_obj.python_minor,
-                        python_patch=commit_obj.python_patch,
-                        timestamp=run_timestamp,
-                    ))
-                    run_counter += 1
+                    for env_obj in selected_environments:
+                        run_id = f"run_{commit_obj.sha[:8]}_{binary_obj.id}_{env_obj.id}_{run_counter}"
+                        run_timestamp = commit_obj.timestamp + timedelta(minutes=random.randint(5, 60))
+                        
+                        run_objects.append(models.Run(
+                            run_id=run_id,
+                            commit_sha=commit_obj.sha,
+                            binary_id=binary_obj.id,
+                            environment_id=env_obj.id,
+                            python_major=commit_obj.python_major,
+                            python_minor=commit_obj.python_minor,
+                            python_patch=commit_obj.python_patch,
+                            timestamp=run_timestamp,
+                        ))
+                        run_counter += 1
             
             # Bulk insert runs in batches to avoid memory issues
             batch_size = 1000
@@ -359,7 +390,8 @@ async def populate_database():
             print(f"\n🎉 Database populated successfully!")
             print(f"   - {len(commit_objects)} commits (100 per Python version)")
             print(f"   - {len(binary_objects)} binaries")
-            print(f"   - {len(run_objects)} runs (every commit × every binary)")
+            print(f"   - {len(environment_objects)} environments")
+            print(f"   - {len(run_objects)} runs (commit × binary × environment combinations)")
             print(f"   - {len(result_objects)} benchmark results")
             
         except Exception as e:

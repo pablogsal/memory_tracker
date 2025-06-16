@@ -17,9 +17,10 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { GitCompareArrows, Download, ArrowUpDown, Filter, AlertCircle, Info, Code2 } from 'lucide-react';
-import type { DiffTableRow, MetricKey, Commit, Binary } from '@/lib/types';
+import type { DiffTableRow, MetricKey, Commit, Binary, Environment } from '@/lib/types';
 import { METRIC_OPTIONS } from '@/lib/types';
 import { api } from '@/lib/api';
+import { useSearchParams } from 'next/navigation';
 
 interface EnhancedDiffTableRow {
   benchmark_name: string;
@@ -44,8 +45,12 @@ type SortField = 'benchmark_name' | 'high_watermark_delta_percent' | 'total_allo
 type SortDirection = 'asc' | 'dsc';
 
 export default function DiffTablePage() {
+  const searchParams = useSearchParams();
   const [commits, setCommits] = useState<Commit[]>([]);
   const [binaries, setBinaries] = useState<Binary[]>([]);
+  const [environments, setEnvironments] = useState<Environment[]>([]);
+  const [availableEnvironments, setAvailableEnvironments] = useState<Environment[]>([]);
+  const [availableCommits, setAvailableCommits] = useState<Commit[]>([]);
   const [diffData, setDiffData] = useState<EnhancedDiffTableRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -53,6 +58,7 @@ export default function DiffTablePage() {
   const [filterBenchmarkName, setFilterBenchmarkName] = useState('');
   const [selectedCommitSha, setSelectedCommitSha] = useState<string | undefined>(); 
   const [selectedBinaryId, setSelectedBinaryId] = useState<string | undefined>();
+  const [selectedEnvironmentId, setSelectedEnvironmentId] = useState<string | undefined>();
   const [filterThreshold, setFilterThreshold] = useState(0);
   const [showOnlyRegressions, setShowOnlyRegressions] = useState(false);
   const [showOnlyImprovements, setShowOnlyImprovements] = useState(false);
@@ -77,20 +83,37 @@ export default function DiffTablePage() {
         setLoading(true);
         setError(null);
         
-        const [commitsData, binariesData] = await Promise.all([
+        const [commitsData, binariesData, environmentsData] = await Promise.all([
           api.getCommits(0, 100),
-          api.getBinaries()
+          api.getBinaries(),
+          api.getEnvironments()
         ]);
         
         setCommits(commitsData);
         setBinaries(binariesData);
+        setEnvironments(environmentsData);
         
-        // Set initial selections
-        if (commitsData.length > 0) {
+        // Set initial selections from URL params or defaults
+        const urlCommitSha = searchParams.get('commit_sha');
+        const urlBinaryId = searchParams.get('binary_id');
+        const urlEnvironmentId = searchParams.get('environment_id');
+        
+        if (urlCommitSha && commitsData.find(c => c.sha === urlCommitSha)) {
+          setSelectedCommitSha(urlCommitSha);
+        } else if (commitsData.length > 0) {
           setSelectedCommitSha(commitsData[0].sha);
         }
-        if (binariesData.length > 0) {
+        
+        if (urlBinaryId && binariesData.find(b => b.id === urlBinaryId)) {
+          setSelectedBinaryId(urlBinaryId);
+        } else if (binariesData.length > 0) {
           setSelectedBinaryId(binariesData[0].id);
+        }
+        
+        if (urlEnvironmentId && environmentsData.find(e => e.id === urlEnvironmentId)) {
+          setSelectedEnvironmentId(urlEnvironmentId);
+        } else if (environmentsData.length > 0) {
+          setSelectedEnvironmentId(environmentsData[0].id);
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load data');
@@ -102,12 +125,69 @@ export default function DiffTablePage() {
     if (mounted) {
       loadData();
     }
-  }, [mounted]);
+  }, [mounted, searchParams]);
+
+  // Update available environments when binary is selected
+  useEffect(() => {
+    async function updateAvailableEnvironments() {
+      if (!selectedBinaryId) {
+        setAvailableEnvironments([]);
+        setSelectedEnvironmentId(undefined);
+        return;
+      }
+
+      try {
+        const environmentsForBinary = await api.getEnvironmentsForBinary(selectedBinaryId);
+        const filteredEnvironments = environments.filter(env => 
+          environmentsForBinary.some(envData => envData.id === env.id)
+        );
+        setAvailableEnvironments(filteredEnvironments);
+        
+        // Reset environment selection if current one is not available
+        if (selectedEnvironmentId && !filteredEnvironments.find(e => e.id === selectedEnvironmentId)) {
+          setSelectedEnvironmentId(filteredEnvironments.length > 0 ? filteredEnvironments[0].id : undefined);
+        }
+      } catch (err) {
+        console.error('Failed to load environments for binary:', err);
+        setAvailableEnvironments([]);
+      }
+    }
+
+    updateAvailableEnvironments();
+  }, [selectedBinaryId, environments, selectedEnvironmentId]);
+
+  // Update available commits when binary and environment are selected
+  useEffect(() => {
+    async function updateAvailableCommits() {
+      if (!selectedBinaryId || !selectedEnvironmentId) {
+        setAvailableCommits([]);
+        return;
+      }
+
+      try {
+        const commitsForBinaryAndEnv = await api.getCommitsForBinaryAndEnvironment(selectedBinaryId, selectedEnvironmentId);
+        const filteredCommits = commits.filter(commit => 
+          commitsForBinaryAndEnv.some(commitData => commitData.sha === commit.sha)
+        );
+        setAvailableCommits(filteredCommits);
+        
+        // Reset commit selection if current one is not available
+        if (selectedCommitSha && !filteredCommits.find(c => c.sha === selectedCommitSha)) {
+          setSelectedCommitSha(filteredCommits.length > 0 ? filteredCommits[0].sha : undefined);
+        }
+      } catch (err) {
+        console.error('Failed to load commits for binary and environment:', err);
+        setAvailableCommits([]);
+      }
+    }
+
+    updateAvailableCommits();
+  }, [selectedBinaryId, selectedEnvironmentId, commits, selectedCommitSha]);
 
   // Load diff data when selections change
   useEffect(() => {
     async function loadDiffData() {
-      if (!selectedCommitSha || !selectedBinaryId) {
+      if (!selectedCommitSha || !selectedBinaryId || !selectedEnvironmentId) {
         setDiffData([]);
         return;
       }
@@ -118,11 +198,13 @@ export default function DiffTablePage() {
           api.getDiffTable({
             commit_sha: selectedCommitSha,
             binary_id: selectedBinaryId,
+            environment_id: selectedEnvironmentId,
             metric_key: 'high_watermark_bytes'
           }),
           api.getDiffTable({
             commit_sha: selectedCommitSha,
             binary_id: selectedBinaryId,
+            environment_id: selectedEnvironmentId,
             metric_key: 'total_allocated_bytes'
           })
         ]);
@@ -168,7 +250,7 @@ export default function DiffTablePage() {
     }
 
     loadDiffData();
-  }, [selectedCommitSha, selectedBinaryId]);
+  }, [selectedCommitSha, selectedBinaryId, selectedEnvironmentId]);
 
 
   const filteredAndSortedData = useMemo(() => {
@@ -294,33 +376,96 @@ export default function DiffTablePage() {
       <div className="space-y-6">
         <h1 className="text-3xl font-bold font-headline">Inspect Run Results</h1>
         <p className="text-muted-foreground">
-          Select a run to inspect its memory metrics and compare with the previous run under the same Python version and binary configuration.
+          Select a run to inspect its memory metrics and compare with the previous run under the same Python version, binary configuration, and environment.
         </p>
 
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2"><Filter className="h-5 w-5 text-primary" /> Filters</CardTitle>
           </CardHeader>
-          <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 items-start">
-            <div className="space-y-3">
-              <Label htmlFor="filter-commit">Run</Label>
-              <Select value={selectedCommitSha} onValueChange={setSelectedCommitSha}>
-                <SelectTrigger id="filter-commit">
-                  <SelectValue placeholder="Select Run" />
-                </SelectTrigger>
-                <SelectContent>
-                  {commits.map(commit => (
-                    <SelectItem key={commit.sha} value={commit.sha}>
-                      <div className="flex items-center gap-2">
-                        {commit.sha.substring(0, 7)}
-                        <span className="text-xs text-muted-foreground truncate">
-                          (py {commit.python_version.major}.{commit.python_version.minor}.{commit.python_version.patch}, {commit.message.substring(0,30)}{commit.message.length > 30 ? '...' : ''})
-                        </span>
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+          <CardContent className="space-y-6">
+            {/* Step indicator */}
+            <div className="flex items-center gap-4 text-sm text-muted-foreground">
+              <div className="flex items-center gap-2">
+                <div className="w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold">1</div>
+                <span>Select Binary</span>
+              </div>
+              <div className="flex-1 h-px bg-border"></div>
+              <div className="flex items-center gap-2">
+                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${selectedBinaryId ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>2</div>
+                <span>Select Environment</span>
+              </div>
+              <div className="flex-1 h-px bg-border"></div>
+              <div className="flex items-center gap-2">
+                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${selectedBinaryId && selectedEnvironmentId ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>3</div>
+                <span>Select Run</span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
+              {/* Step 1: Binary Selection */}
+              <div className="space-y-3">
+                <Label htmlFor="filter-binary" className="flex items-center gap-2">
+                  <div className="w-4 h-4 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold">1</div>
+                  Binary Flags
+                </Label>
+                <Select value={selectedBinaryId} onValueChange={setSelectedBinaryId}>
+                  <SelectTrigger id="filter-binary"><SelectValue placeholder="Select Binary Flags" /></SelectTrigger>
+                  <SelectContent>
+                    {binaries.map(binary => <SelectItem key={binary.id} value={binary.id}>{binary.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Step 2: Environment Selection */}
+              <div className="space-y-3">
+                <Label htmlFor="filter-environment" className="flex items-center gap-2">
+                  <div className={`w-4 h-4 rounded-full flex items-center justify-center text-xs font-bold ${selectedBinaryId ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>2</div>
+                  Environment
+                </Label>
+                <Select 
+                  value={selectedEnvironmentId} 
+                  onValueChange={setSelectedEnvironmentId}
+                  disabled={!selectedBinaryId}
+                >
+                  <SelectTrigger id="filter-environment" className={!selectedBinaryId ? 'opacity-50' : ''}>
+                    <SelectValue placeholder={!selectedBinaryId ? "First select a binary" : "Select Environment"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableEnvironments.map(environment => (
+                      <SelectItem key={environment.id} value={environment.id}>{environment.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Step 3: Run Selection */}
+              <div className="space-y-3">
+                <Label htmlFor="filter-commit" className="flex items-center gap-2">
+                  <div className={`w-4 h-4 rounded-full flex items-center justify-center text-xs font-bold ${selectedBinaryId && selectedEnvironmentId ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>3</div>
+                  Run
+                </Label>
+                <Select 
+                  value={selectedCommitSha} 
+                  onValueChange={setSelectedCommitSha}
+                  disabled={!selectedBinaryId || !selectedEnvironmentId}
+                >
+                  <SelectTrigger id="filter-commit" className={!selectedBinaryId || !selectedEnvironmentId ? 'opacity-50' : ''}>
+                    <SelectValue placeholder={!selectedBinaryId || !selectedEnvironmentId ? "Select binary & environment first" : "Select Run"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableCommits.map(commit => (
+                      <SelectItem key={commit.sha} value={commit.sha}>
+                        <div className="flex items-center gap-2">
+                          {commit.sha.substring(0, 7)}
+                          <span className="text-xs text-muted-foreground truncate">
+                            (py {commit.python_version.major}.{commit.python_version.minor}.{commit.python_version.patch}, {commit.message.substring(0,30)}{commit.message.length > 30 ? '...' : ''})
+                          </span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               {selectedCommitDetails && (
                 <div className="flex flex-col gap-2">
                   <div className="flex items-center gap-2">
@@ -363,36 +508,30 @@ export default function DiffTablePage() {
                   )}
                 </div>
               )}
+              </div>
             </div>
 
-            <div className="space-y-3">
-              <Label htmlFor="filter-binary">Binary Flags</Label>
-              <Select value={selectedBinaryId} onValueChange={setSelectedBinaryId}>
-                <SelectTrigger id="filter-binary"><SelectValue placeholder="Select Binary Flags" /></SelectTrigger>
-                <SelectContent>
-                  {binaries.map(binary => <SelectItem key={binary.id} value={binary.id}>{binary.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
+            {/* Additional Filters */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 items-start border-t pt-6">
+              <div className="space-y-3">
+                <Label htmlFor="filter-benchmark-name">Benchmark Name</Label>
+                <Input id="filter-benchmark-name" placeholder="e.g., pyperformance_go" value={filterBenchmarkName} onChange={e => setFilterBenchmarkName(e.target.value)} />
+              </div>
 
-            <div className="space-y-3">
-              <Label htmlFor="filter-benchmark-name">Benchmark Name</Label>
-              <Input id="filter-benchmark-name" placeholder="e.g., pyperformance_go" value={filterBenchmarkName} onChange={e => setFilterBenchmarkName(e.target.value)} />
-            </div>
+              <div className="space-y-3">
+                <Label htmlFor="filter-threshold">Min. Change Threshold (%)</Label>
+                <Input id="filter-threshold" type="number" placeholder="e.g., 5" value={filterThreshold} onChange={e => setFilterThreshold(Number(e.target.value))} />
+              </div>
 
-            <div className="space-y-3">
-              <Label htmlFor="filter-threshold">Min. Change Threshold (%)</Label>
-              <Input id="filter-threshold" type="number" placeholder="e.g., 5" value={filterThreshold} onChange={e => setFilterThreshold(Number(e.target.value))} />
-            </div>
+              <div className="flex items-center space-x-2 pt-2">
+                <Checkbox id="show-regressions" checked={showOnlyRegressions} onCheckedChange={c => setShowOnlyRegressions(c as boolean)} />
+                <Label htmlFor="show-regressions">Only Regressions</Label>
+              </div>
 
-            <div className="flex items-center space-x-2 pt-2">
-              <Checkbox id="show-regressions" checked={showOnlyRegressions} onCheckedChange={c => setShowOnlyRegressions(c as boolean)} />
-              <Label htmlFor="show-regressions">Only Regressions</Label>
-            </div>
-
-            <div className="flex items-center space-x-2 pt-2">
-              <Checkbox id="show-improvements" checked={showOnlyImprovements} onCheckedChange={c => setShowOnlyImprovements(c as boolean)} />
-              <Label htmlFor="show-improvements">Only Improvements</Label>
+              <div className="flex items-center space-x-2 pt-2">
+                <Checkbox id="show-improvements" checked={showOnlyImprovements} onCheckedChange={c => setShowOnlyImprovements(c as boolean)} />
+                <Label htmlFor="show-improvements">Only Improvements</Label>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -412,6 +551,9 @@ export default function DiffTablePage() {
                   </div>
                   <div>
                     Binary Configuration: {binaries.find(b=>b.id === selectedBinaryId)?.name}
+                  </div>
+                  <div>
+                    Environment: {environments.find(e=>e.id === selectedEnvironmentId)?.name}
                   </div>
                   <div className="text-muted-foreground">
                     Displaying both high watermark and total allocated bytes with percentage changes.
@@ -491,7 +633,7 @@ export default function DiffTablePage() {
               <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
                 <AlertCircle className="w-12 h-12 mb-4" />
                 <p className="text-lg">No comparisons match your current filters or data is unavailable.</p>
-                <p className="text-sm mt-2">Ensure the selected commit has a predecessor with comparable data for the same Python major.minor version, chosen binary, and metric.</p>
+                <p className="text-sm mt-2">Ensure the selected commit has a predecessor with comparable data for the same Python major.minor version, chosen binary, environment, and metric.</p>
               </div>
             )}
           </CardContent>

@@ -10,6 +10,12 @@ export type Binary = {
   flags: string[];
 };
 
+export type Environment = {
+  id: string;
+  name: string;
+  description?: string;
+};
+
 export type Commit = {
   sha: string;
   timestamp: string;
@@ -53,6 +59,7 @@ export type EnrichedBenchmarkResult = {
   result_json: BenchmarkResultJson;
   commit: Commit;
   binary: Binary;
+  environment: Environment;
   run_python_version: PythonVersion;
 };
 

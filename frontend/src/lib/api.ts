@@ -3,6 +3,7 @@ import type {
   Commit, 
   DiffTableRow, 
   EnrichedBenchmarkResult, 
+  Environment,
   PythonVersionFilterOption,
   BenchmarkResultJson
 } from './types';
@@ -41,6 +42,14 @@ export const api = {
   // Binary endpoints
   getBinaries: () => fetchApi<Binary[]>('/api/binaries'),
   getBinary: (id: string) => fetchApi<Binary>(`/api/binaries/${id}`),
+  getEnvironmentsForBinary: (binaryId: string) => 
+    fetchApi<Array<{ id: string; name: string; description?: string; run_count: number; commit_count: number }>>(`/api/binaries/${binaryId}/environments`),
+  getCommitsForBinaryAndEnvironment: (binaryId: string, environmentId: string) => 
+    fetchApi<Array<{ sha: string; timestamp: string; message: string; author: string; python_version: { major: number; minor: number; patch: number }; run_timestamp: string }>>(`/api/binaries/${binaryId}/environments/${environmentId}/commits`),
+
+  // Environment endpoints
+  getEnvironments: () => fetchApi<Environment[]>('/api/environments'),
+  getEnvironment: (id: string) => fetchApi<Environment>(`/api/environments/${id}`),
 
   // Python version endpoints
   getPythonVersions: () => fetchApi<PythonVersionFilterOption[]>('/api/python-versions'),
@@ -49,6 +58,7 @@ export const api = {
   getBenchmarkResults: (params: { 
     benchmark_name?: string;
     binary_id?: string;
+    environment_id?: string;
     python_major?: number;
     python_minor?: number;
     skip?: number;
@@ -57,6 +67,7 @@ export const api = {
     const queryParams = new URLSearchParams();
     if (params.benchmark_name) queryParams.append('benchmark_name', params.benchmark_name);
     if (params.binary_id) queryParams.append('binary_id', params.binary_id);
+    if (params.environment_id) queryParams.append('environment_id', params.environment_id);
     if (params.python_major !== undefined) queryParams.append('python_major', params.python_major.toString());
     if (params.python_minor !== undefined) queryParams.append('python_minor', params.python_minor.toString());
     if (params.skip !== undefined) queryParams.append('skip', params.skip.toString());
@@ -69,11 +80,13 @@ export const api = {
   getDiffTable: (params: {
     commit_sha: string;
     binary_id: string;
+    environment_id: string;
     metric_key: string;
   }) => {
     const queryParams = new URLSearchParams();
     queryParams.append('commit_sha', params.commit_sha);
     queryParams.append('binary_id', params.binary_id);
+    queryParams.append('environment_id', params.environment_id);
     queryParams.append('metric_key', params.metric_key);
     
     return fetchApi<DiffTableRow[]>(`/api/diff?${queryParams.toString()}`);
@@ -83,6 +96,7 @@ export const api = {
   uploadBenchmarkResults: (data: {
     commit_sha: string;
     binary_id: string;
+    environment_id: string;
     python_version: {
       major: number;
       minor: number;
