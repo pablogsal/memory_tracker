@@ -21,9 +21,8 @@ import {
 import type { EnrichedBenchmarkResult, MetricKey, PythonVersionFilterOption } from '@/lib/types';
 import { mockEnrichedBenchmarkResults, mockBinaries, mockCommits, benchmarkNames as allBenchmarkNames, mockPythonVersionOptions } from '@/lib/mockData';
 import { METRIC_OPTIONS } from '@/lib/types';
-import { ScrollArea } from '@/components/ui/scroll-area'; // ScrollBar removed as not directly used in this simplified version
+import { ScrollArea } from '@/components/ui/scroll-area';
 
-// Helper to format bytes
 const formatBytes = (bytes: number, decimals = 2) => {
   if (!bytes && bytes !== 0) return 'N/A';
   if (bytes === 0) return '0 Bytes';
@@ -37,7 +36,7 @@ const formatBytes = (bytes: number, decimals = 2) => {
 export default function BenchmarkTrendPage() {
   const [selectedBinaryId, setSelectedBinaryId] = useState<string | undefined>(mockBinaries[0]?.id);
   const [selectedPythonVersionKey, setSelectedPythonVersionKey] = useState<string | undefined>(
-    mockPythonVersionOptions[0] ? `${mockPythonVersionOptions[0].major}.${mockPythonVersionOptions[0].minor}` : undefined
+    mockPythonVersionOptions[0]?.label
   );
   const [selectedMetric, setSelectedMetric] = useState<MetricKey>(METRIC_OPTIONS[0].value);
   const [selectedBenchmarks, setSelectedBenchmarks] = useState<string[]>([allBenchmarkNames[0]]);
@@ -49,33 +48,26 @@ export default function BenchmarkTrendPage() {
   const filteredData = useMemo(() => {
     if (!selectedBinaryId || !selectedPythonVersionKey) return [];
     
-    const [majorStr, minorStr] = selectedPythonVersionKey.split('.');
-    const major = parseInt(majorStr);
-    const minor = parseInt(minorStr);
+    const versionOption = mockPythonVersionOptions.find(v => v.label === selectedPythonVersionKey);
+    if (!versionOption) return [];
 
     return mockEnrichedBenchmarkResults
       .filter(result => 
         result.binary.id === selectedBinaryId &&
-        result.run_python_version.major === major &&
-        result.run_python_version.minor === minor &&
+        result.run_python_version.major === versionOption.major &&
+        result.run_python_version.minor === versionOption.minor &&
         selectedBenchmarks.includes(result.benchmark_name)
       )
       .sort((a, b) => new Date(a.commit.timestamp).getTime() - new Date(b.commit.timestamp).getTime());
   }, [selectedBinaryId, selectedPythonVersionKey, selectedBenchmarks]);
 
   const chartData = useMemo(() => {
-    // Group data by commit SHA, then by benchmark name.
-    // Each point on the X-axis is a commit. Lines represent different benchmarks.
-    // If multiple Python patch versions exist for the same commit/binary/major.minor, we average them or pick one.
-    // For simplicity here, we'll assume mockEnrichedBenchmarkResults handles this or takes the first one.
-    // A more robust solution would aggregate or allow selecting patch versions.
-
     const dataByCommit: { 
       [commitSha: string]: { 
         commitSha: string, 
         timestamp: string, 
         commitMessage: string,
-        fullVersion?: string, // Store the full python version for display
+        fullVersion?: string, 
         [benchmarkName: string]: any 
       } 
     } = {};
@@ -90,19 +82,14 @@ export default function BenchmarkTrendPage() {
           fullVersion: `${result.run_python_version.major}.${result.run_python_version.minor}.${result.run_python_version.patch}`
         };
       }
-      // Store the metric value for the specific benchmark. If multiple results for same commit/benchmark (e.g. different patches), this overwrites.
-      // Ideally, aggregate (e.g., average) or pick latest patch if multiple exist.
-      // For this mock, we assume one relevant data point per commit SHA after initial filtering.
       dataByCommit[commitSha][result.benchmark_name] = result.result_json[selectedMetric];
-      // Ensure all selected benchmarks have a key, even if undefined, to draw lines correctly
       selectedBenchmarks.forEach(sb => {
         if (!(sb in dataByCommit[commitSha])) {
-            dataByCommit[commitSha][sb] = undefined; // Or null
+            dataByCommit[commitSha][sb] = undefined; 
         }
       });
     });
     
-    // Sort by the original commit timestamp
     return Object.values(dataByCommit).sort((a,b) => {
         const commitA = mockCommits.find(c => c.sha.startsWith(a.commitSha));
         const commitB = mockCommits.find(c => c.sha.startsWith(b.commitSha));
@@ -122,7 +109,7 @@ export default function BenchmarkTrendPage() {
 
   const displayedBenchmarkNames = useMemo(() => {
     return allBenchmarkNames.filter(name => name.toLowerCase().includes(benchmarkSearch.toLowerCase()));
-  }, [benchmarkSearch, allBenchmarkNames]);
+  }, [benchmarkSearch]);
 
   const lineColors = ['#8884d8', '#82ca9d', '#ffc658', '#ff7300', '#00C49F', '#FFBB28', '#FF8042', '#0088FE', '#00C49F', '#FFBB28'];
 
@@ -192,7 +179,7 @@ export default function BenchmarkTrendPage() {
             </Select>
           </div>
 
-          <div className="lg:col-span-3"> {/* Make benchmark selection span full width on larger screens */}
+          <div className="lg:col-span-3">
             <Label>Benchmarks (Select up to {lineColors.length})</Label>
             <Input 
               placeholder="Search benchmarks..." 
@@ -246,7 +233,7 @@ export default function BenchmarkTrendPage() {
                   angle={-35} 
                   textAnchor="end" 
                   height={80} 
-                  interval={chartData.length > 20 ? Math.floor(chartData.length / 10) : 0} // Adjust interval for readability
+                  interval={chartData.length > 20 ? Math.floor(chartData.length / 10) : 0} 
                   tickFormatter={(value, index) => chartData[index]?.commitSha || value}
                 />
                 <YAxis tickFormatter={(value) => formatBytes(value)} />
@@ -274,7 +261,7 @@ export default function BenchmarkTrendPage() {
                     strokeWidth={2}
                     dot={{ r: 3 }}
                     activeDot={{ r: 6 }}
-                    connectNulls // Connect lines even if some data points are missing
+                    connectNulls 
                   />
                 ))}
               </LineChart>

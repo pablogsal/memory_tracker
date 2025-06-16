@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { LineChart, GitCompareArrows, Pyramid, ListChecks } from "lucide-react"; // Changed Pyramids to Pyramid, UploadCloud to ListChecks for Binaries
+import { LineChart, GitCompareArrows, Pyramid, ListChecks } from "lucide-react"; 
 import Link from "next/link";
 
 export default function Home() {
@@ -22,8 +22,8 @@ export default function Home() {
     {
       title: "Inspect Binaries",
       description: "View details of available binary compilation flag configurations.",
-      icon: ListChecks, // Changed from UploadCloud
-      href: "/binaries", // New page
+      icon: ListChecks,
+      href: "/binaries",
       cta: "Inspect Binaries",
     },
   ];
@@ -38,7 +38,7 @@ export default function Home() {
         Analyze memory behavior trends, compare builds and commits, and investigate performance regressions in the CPython project.
       </p>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-8 w-full max-w-5xl"> {/* Adjusted grid-cols for 3 items */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-8 w-full max-w-5xl">
         {features.map((feature) => (
           <Card key={feature.title} className="flex flex-col shadow-lg hover:shadow-xl transition-shadow duration-300">
             <CardHeader className="items-center">

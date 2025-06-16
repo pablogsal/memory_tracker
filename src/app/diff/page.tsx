@@ -27,10 +27,10 @@ type SortDirection = 'asc' | 'dsc';
 
 export default function DiffTablePage() {
   const [filterBenchmarkName, setFilterBenchmarkName] = useState('');
-  const [selectedCommitSha, setSelectedCommitSha] = useState<string | undefined>(mockCommits[0]?.sha); // Newest commit by default
+  const [selectedCommitSha, setSelectedCommitSha] = useState<string | undefined>(mockCommits[0]?.sha); 
   const [selectedBinaryId, setSelectedBinaryId] = useState<string | undefined>(mockBinaries[0]?.id);
   const [selectedPythonVersionKey, setSelectedPythonVersionKey] = useState<string | undefined>(
-    mockPythonVersionOptions[0] ? `${mockPythonVersionOptions[0].major}.${mockPythonVersionOptions[0].minor}` : undefined
+    mockPythonVersionOptions[0]?.label
   );
   const [selectedMetric, setSelectedMetric] = useState<MetricKey>(METRIC_OPTIONS[0].value);
   const [filterThreshold, setFilterThreshold] = useState(0);
@@ -49,12 +49,14 @@ export default function DiffTablePage() {
     if (!selectedCommitSha || !selectedBinaryId || !selectedPythonVersionKey || !selectedMetric) {
       return [];
     }
-    const [majorStr, minorStr] = selectedPythonVersionKey.split('.');
+    const versionOption = mockPythonVersionOptions.find(v => v.label === selectedPythonVersionKey);
+    if (!versionOption) return [];
+
     return getMockDiffTableRows(
       selectedCommitSha,
       selectedBinaryId,
-      parseInt(majorStr),
-      parseInt(minorStr),
+      versionOption.major,
+      versionOption.minor,
       selectedMetric
     );
   }, [selectedCommitSha, selectedBinaryId, selectedPythonVersionKey, selectedMetric]);
@@ -88,9 +90,6 @@ export default function DiffTablePage() {
         case 'metric_delta_percent':
           compareA = a.metric_delta_percent === undefined ? (sortDirection === 'dsc' ? -Infinity : Infinity) : a.metric_delta_percent;
           compareB = b.metric_delta_percent === undefined ? (sortDirection === 'dsc' ? -Infinity : Infinity) : b.metric_delta_percent;
-          // For absolute sorting by magnitude if desired:
-          // compareA = Math.abs(a.metric_delta_percent ?? 0);
-          // compareB = Math.abs(b.metric_delta_percent ?? 0);
           break;
         default:
           return 0;
@@ -125,7 +124,7 @@ export default function DiffTablePage() {
   
   const formatDelta = (delta: number | undefined) => {
     if (delta === undefined) return 'N/A';
-    if (delta === Infinity) return '+Inf%';
+    if (delta === Infinity) return <span className="text-red-600 dark:text-red-400 font-semibold">New (Prev N/A or Zero)</span>;
     const sign = delta > 0 ? '+' : '';
     return `${sign}${delta.toFixed(2)}%`;
   };

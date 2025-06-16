@@ -37,35 +37,30 @@ export interface BenchmarkResultJson {
   allocation_histogram: [number, number][]; // [size, count]
   total_allocated_bytes: number;
   top_allocating_functions: TopAllocatingFunction[];
-  // Ensure benchmark_name can be part of result_json if needed, or it's primarily on BenchmarkResult
-  benchmark_name?: string;
+  benchmark_name?: string; 
 }
 
 export interface BenchmarkResult {
-  id: string; // Unique ID for the result, e.g. run_id + benchmark_name
+  id: string; 
   run_id: string;
   benchmark_name: string;
   result_json: BenchmarkResultJson;
 }
 
-// Combined type for easier display
 export interface EnrichedBenchmarkResult extends BenchmarkResult {
   commit: Commit;
-  binary: Binary; // The flag set used for the run
-  run_python_version: PythonVersion; // The Python version of the run
+  binary: Binary; 
+  run_python_version: PythonVersion; 
 }
 
 export interface DiffTableRow {
   benchmark_name: string;
-  // prev_commit_sha and curr_commit_sha removed as context is a single selected commit
-  metric_delta_percent?: number; // Percentage
+  metric_delta_percent?: number; 
   prev_metric_value?: number;
   curr_metric_value: number;
-  // prev_commit and curr_commit objects for detailed info if needed elsewhere, but not directly in table rows
   prev_commit_details?: Commit;
   curr_commit_details: Commit;
   metric_key: keyof BenchmarkResultJson;
-  // Specific Python versions used for the comparison
   prev_python_version_str?: string;
   curr_python_version_str: string;
 }
@@ -77,7 +72,6 @@ export const METRIC_OPTIONS: { value: MetricKey; label: string }[] = [
   { value: 'total_allocated_bytes', label: 'Total Allocated (Bytes)' },
 ];
 
-// For filtering by major.minor
 export interface PythonVersionFilterOption {
   label: string; // e.g., "3.12"
   major: number;

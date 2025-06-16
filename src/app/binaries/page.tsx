@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Badge } from '@/components/ui/badge';
 import { ListChecks, Cpu } from 'lucide-react';
-import { mockBinaries } from '@/lib/mockData'; // Assuming mockBinaries is updated
+import { mockBinaries } from '@/lib/mockData';
 
 export default function BinariesPage() {
   return (

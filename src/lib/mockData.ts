@@ -1,4 +1,4 @@
-import type { Commit, Binary, Run, BenchmarkResult, EnrichedBenchmarkResult, DiffTableRow, PythonVersion, MetricKey, PythonVersionFilterOption } from './types';
+import type { Commit, Binary, Run, BenchmarkResult, EnrichedBenchmarkResult, DiffTableRow, PythonVersion, MetricKey, PythonVersionFilterOption, BenchmarkResultJson } from './types';
 
 const createCommit = (sha: string, daysAgo: number, message: string, author: string): Commit => ({
   sha,
@@ -15,28 +15,21 @@ export const mockCommits: Commit[] = [
   createCommit('q7r8s9t0', 1, 'Fix minor bug in UI', 'Eve Harrington'),
   createCommit('u1v2w3x4', 0, 'Release version 1.0.0', 'Alice Wonderland'),
 ];
-// Sort commits by timestamp descending (newest first) for easier "previous commit" logic
 mockCommits.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
-
-// Binaries are now sets of flags
 export const mockBinaries: Binary[] = [
   { id: 'default', name: 'Default', flags: [] },
-  { id: 'debug', name: 'Debug', flags: ['debug'] },
-  { id: 'nogil', name: 'No GIL', flags: ['nogil'] },
-  { id: 'debug-nogil', name: 'Debug & No GIL', flags: ['debug', 'nogil'] },
-  { id: 'opt', name: 'Optimized', flags: ['opt'] },
+  { id: 'debug', name: 'Debug', flags: ['--with-debug'] },
+  { id: 'nogil', name: 'No GIL', flags: ['--disable-gil'] },
+  { id: 'debug-nogil', name: 'Debug & No GIL', flags: ['--with-debug', '--disable-gil'] },
+  { id: 'lto', name: 'LTO Enabled', flags: ['--with-lto'] },
+  { id: 'pgo', name: 'PGO Optimized', flags: ['--enable-optimizations'] },
 ];
 
-// Runs link a commit, a binary flag set, and a specific Python version
 const createRun = (run_id: string, commit_sha: string, binary_id: string, python_version: PythonVersion, daysAgoOffset: number): Run => {
-  // Find the commit's original daysAgo to base the run's timestamp accurately
   const commit = mockCommits.find(c => c.sha === commit_sha);
   let baseTimestamp = Date.now();
   if (commit) {
-    // This logic is a bit simplified; assumes mockCommits 'daysAgo' is relative to current 'Date.now()'
-    // For more precise matching, commit timestamp should be used directly.
-    // Let's use commit's timestamp and add a small jitter if daysAgoOffset is for sub-day variations.
     baseTimestamp = new Date(commit.timestamp).getTime();
   }
   
@@ -45,65 +38,78 @@ const createRun = (run_id: string, commit_sha: string, binary_id: string, python
     commit_sha,
     binary_id,
     python_version,
-    timestamp: new Date(baseTimestamp - daysAgoOffset * 3600 * 1000).toISOString(), // Offset in hours for variety
+    timestamp: new Date(baseTimestamp - daysAgoOffset * 3600 * 1000).toISOString(), 
   };
 };
 
-
 export const mockRuns: Run[] = [
   // Commit 0 (u1v2w3x4 - newest)
-  createRun('run_c0_b0_v0', mockCommits[0].sha, mockBinaries[0].id, { major: 3, minor: 13, patch: 0 }, 0),
-  createRun('run_c0_b1_v0', mockCommits[0].sha, mockBinaries[1].id, { major: 3, minor: 13, patch: 0 }, 0),
-  createRun('run_c0_b0_v1', mockCommits[0].sha, mockBinaries[0].id, { major: 3, minor: 12, patch: 5 }, 0),
+  createRun('run_c0_b0_py313_0', mockCommits[0].sha, mockBinaries[0].id, { major: 3, minor: 13, patch: 0 }, 0),
+  createRun('run_c0_b1_py313_0', mockCommits[0].sha, mockBinaries[1].id, { major: 3, minor: 13, patch: 0 }, 0),
+  createRun('run_c0_b0_py312_5', mockCommits[0].sha, mockBinaries[0].id, { major: 3, minor: 12, patch: 5 }, 0),
+  createRun('run_c0_b2_py313_0', mockCommits[0].sha, mockBinaries[2].id, { major: 3, minor: 13, patch: 0 }, 0.1),
+
 
   // Commit 1 (q7r8s9t0)
-  createRun('run_c1_b0_v0', mockCommits[1].sha, mockBinaries[0].id, { major: 3, minor: 13, patch: 0 }, 1),
-  createRun('run_c1_b1_v0', mockCommits[1].sha, mockBinaries[1].id, { major: 3, minor: 13, patch: 0 }, 1),
-  createRun('run_c1_b2_v1', mockCommits[1].sha, mockBinaries[2].id, { major: 3, minor: 12, patch: 5 }, 1),
-  createRun('run_c1_b0_v2', mockCommits[1].sha, mockBinaries[0].id, { major: 3, minor: 12, patch: 4 }, 1),
+  createRun('run_c1_b0_py313_0', mockCommits[1].sha, mockBinaries[0].id, { major: 3, minor: 13, patch: 0 }, 1),
+  createRun('run_c1_b1_py313_0', mockCommits[1].sha, mockBinaries[1].id, { major: 3, minor: 13, patch: 0 }, 1),
+  createRun('run_c1_b2_py312_5', mockCommits[1].sha, mockBinaries[2].id, { major: 3, minor: 12, patch: 5 }, 1),
+  createRun('run_c1_b0_py312_4', mockCommits[1].sha, mockBinaries[0].id, { major: 3, minor: 12, patch: 4 }, 1),
 
   // Commit 2 (m3n4o5p6)
-  createRun('run_c2_b0_v0', mockCommits[2].sha, mockBinaries[0].id, { major: 3, minor: 13, patch: 0 }, 2),
-  createRun('run_c2_b3_v1', mockCommits[2].sha, mockBinaries[3].id, { major: 3, minor: 12, patch: 4 }, 2),
+  createRun('run_c2_b0_py313_0', mockCommits[2].sha, mockBinaries[0].id, { major: 3, minor: 13, patch: 0 }, 2),
+  createRun('run_c2_b3_py312_4', mockCommits[2].sha, mockBinaries[3].id, { major: 3, minor: 12, patch: 4 }, 2),
+  createRun('run_c2_b0_py311_7', mockCommits[2].sha, mockBinaries[0].id, { major: 3, minor: 11, patch: 7 }, 2.1),
+
 
   // Commit 3 (i9j0k1l2)
-  createRun('run_c3_b0_v0', mockCommits[3].sha, mockBinaries[0].id, { major: 3, minor: 12, patch: 3 }, 3),
-  createRun('run_c3_b1_v0', mockCommits[3].sha, mockBinaries[1].id, { major: 3, minor: 12, patch: 3 }, 3),
+  createRun('run_c3_b0_py312_3', mockCommits[3].sha, mockBinaries[0].id, { major: 3, minor: 12, patch: 3 }, 3),
+  createRun('run_c3_b1_py312_3', mockCommits[3].sha, mockBinaries[1].id, { major: 3, minor: 12, patch: 3 }, 3),
 
   // Commit 4 (e5f6g7h8)
-  createRun('run_c4_b0_v0', mockCommits[4].sha, mockBinaries[0].id, { major: 3, minor: 12, patch: 1 }, 4),
-  createRun('run_c4_b0_v1', mockCommits[4].sha, mockBinaries[0].id, { major: 3, minor: 11, patch: 5 }, 4),
+  createRun('run_c4_b0_py312_1', mockCommits[4].sha, mockBinaries[0].id, { major: 3, minor: 12, patch: 1 }, 4),
+  createRun('run_c4_b0_py311_5', mockCommits[4].sha, mockBinaries[0].id, { major: 3, minor: 11, patch: 5 }, 4),
   
   // Commit 5 (a1b2c3d4 - oldest)
-  createRun('run_c5_b0_v0', mockCommits[5].sha, mockBinaries[0].id, { major: 3, minor: 12, patch: 0 }, 5),
-  createRun('run_c5_b1_v0', mockCommits[5].sha, mockBinaries[1].id, { major: 3, minor: 12, patch: 0 }, 5),
+  createRun('run_c5_b0_py312_0', mockCommits[5].sha, mockBinaries[0].id, { major: 3, minor: 12, patch: 0 }, 5),
+  createRun('run_c5_b1_py312_0', mockCommits[5].sha, mockBinaries[1].id, { major: 3, minor: 12, patch: 0 }, 5),
+  createRun('run_c5_b4_py311_3', mockCommits[5].sha, mockBinaries[4].id, { major: 3, minor: 11, patch: 3 }, 5.1),
 ];
 
+export const benchmarkNames = ['pyperformance_go', 'pyperformance_json_dumps', 'pyperformance_regex_dna', 'custom_memory_test_A', 'custom_memory_test_B', 'startup_time', 'threading_overhead'];
 
-export const benchmarkNames = ['pyperformance_go', 'pyperformance_json_dumps', 'pyperformance_regex_dna', 'custom_memory_test_A', 'custom_memory_test_B'];
+const generateBenchmarkResultJson = (baseValue: number, iteration: number, benchmarkName: string, commitTimestamp: string, runTimestamp: string): BenchmarkResultJson => {
+  const timeDiffFactor = (new Date(runTimestamp).getTime() - new Date(commitTimestamp).getTime()) / (1000 * 60 * 60 * 24); // days difference
+  const iterationFactor = 1 + (Math.random() - 0.45) * 0.05 * iteration + timeDiffFactor * 0.01; // Small random variation + time trend
 
-const generateBenchmarkResultJson = (baseValue: number, iteration: number, benchmarkName: string): BenchmarkResultJson => {
-  const factor = 1 + (Math.random() - 0.45) * 0.1 * iteration; // Small random variation
+  let value = baseValue;
+  if (benchmarkName.includes('json')) value *= 1.5;
+  if (benchmarkName.includes('regex')) value *= 2.0;
+  if (benchmarkName.includes('startup')) value *= 0.1;
+  if (benchmarkName.includes('threading')) value *= 0.5;
+
+
   return {
-    benchmark_name: benchmarkName, // Storing benchmark_name here too
-    high_watermark_bytes: Math.floor(baseValue * factor * (1 + Math.random() * 0.1)),
-    allocation_histogram: [[16, Math.floor(1000 * factor)], [32, Math.floor(500 * factor)], [64, Math.floor(200 * factor)]] as [number, number][],
-    total_allocated_bytes: Math.floor(baseValue * 2 * factor * (1 + Math.random() * 0.05)),
+    benchmark_name: benchmarkName,
+    high_watermark_bytes: Math.floor(value * iterationFactor * (1 + Math.random() * 0.05)),
+    allocation_histogram: [[16, Math.floor(1000 * iterationFactor)], [32, Math.floor(500 * iterationFactor)], [64, Math.floor(200 * iterationFactor)]] as [number, number][],
+    total_allocated_bytes: Math.floor(value * 1.8 * iterationFactor * (1 + Math.random() * 0.03)),
     top_allocating_functions: [
-      { function: 'malloc', count: Math.floor(1000 * factor), total_size: Math.floor(50000 * factor) },
-      { function: 'new_object', count: Math.floor(200 * factor), total_size: Math.floor(30000 * factor) },
+      { function: 'malloc', count: Math.floor(1000 * iterationFactor), total_size: Math.floor(value * 0.5 * iterationFactor) },
+      { function: 'new_object', count: Math.floor(200 * iterationFactor), total_size: Math.floor(value * 0.3 * iterationFactor) },
     ],
   };
 };
 
-export const mockBenchmarkResults: BenchmarkResult[] = mockRuns.flatMap((run, runIndex) => 
-  benchmarkNames.map((name, benchIndex) => ({
-    id: `${run.run_id}_${name}`,
+export const mockBenchmarkResults: BenchmarkResult[] = mockRuns.flatMap((run, runIndex) => {
+  const commit = mockCommits.find(c => c.sha === run.commit_sha)!;
+  return benchmarkNames.map((name, benchIndex) => ({
+    id: `${run.run_id}_${name.replace(/_/g, '-')}`, // Ensure ID is filesystem friendly
     run_id: run.run_id,
     benchmark_name: name,
-    result_json: generateBenchmarkResultJson(1000000 + benchIndex * 200000, runIndex + 1, name),
-  }))
-);
+    result_json: generateBenchmarkResultJson(1000000 + benchIndex * 100000, runIndex + 1, name, commit.timestamp, run.timestamp),
+  }));
+});
 
 export const mockEnrichedBenchmarkResults: EnrichedBenchmarkResult[] = mockBenchmarkResults.map(br => {
   const run = mockRuns.find(r => r.run_id === br.run_id)!;
@@ -131,9 +137,6 @@ export const getAvailablePythonVersionFilters = (): PythonVersionFilterOption[] 
 };
 export const mockPythonVersionOptions: PythonVersionFilterOption[] = getAvailablePythonVersionFilters();
 
-
-// Find the best matching run for a commit, binaryId (flags), and Python major.minor prefix
-// Prefers highest patch, then latest timestamp if multiple runs match.
 const findBestMatchingRun = (
   commitSha: string,
   binaryId: string,
@@ -150,20 +153,17 @@ const findBestMatchingRun = (
         run.python_version.minor === pythonMinor
     )
     .sort((a, b) => {
-      // Sort by patch descending
       if (b.python_version.patch !== a.python_version.patch) {
         return b.python_version.patch - a.python_version.patch;
       }
-      // Then by timestamp descending (newest first)
       return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
     });
-  return matchingRuns[0]; // Return the best match (highest patch, newest)
+  return matchingRuns[0]; 
 };
-
 
 export const getMockDiffTableRows = (
   selectedCommitSha: string,
-  selectedBinaryId: string, // This is now the ID of a flag set
+  selectedBinaryId: string, 
   selectedPythonMajor: number,
   selectedPythonMinor: number,
   metricKey: MetricKey = 'high_watermark_bytes'
@@ -172,11 +172,10 @@ export const getMockDiffTableRows = (
   const selectedCommit = mockCommits.find(c => c.sha === selectedCommitSha);
   if (!selectedCommit) return [];
 
-  // Find the index of the selected commit in the chronologically sorted (oldest to newest) commit list
   const commitsSortedOldestFirst = [...mockCommits].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
   const selectedCommitIndex = commitsSortedOldestFirst.findIndex(c => c.sha === selectedCommitSha);
 
-  if (selectedCommitIndex === -1) return []; // Should not happen if selectedCommit is found
+  if (selectedCommitIndex === -1) return [];
 
   const prevCommit = selectedCommitIndex > 0 ? commitsSortedOldestFirst[selectedCommitIndex - 1] : undefined;
 
@@ -184,7 +183,7 @@ export const getMockDiffTableRows = (
     const currentRun = findBestMatchingRun(selectedCommit.sha, selectedBinaryId, selectedPythonMajor, selectedPythonMinor, mockRuns);
     const currentResult = currentRun ? mockBenchmarkResults.find(br => br.run_id === currentRun.run_id && br.benchmark_name === benchmarkName) : undefined;
 
-    if (!currentResult || !currentRun) continue; // No data for current selection for this benchmark
+    if (!currentResult || !currentRun) continue; 
 
     const currMetricValue = currentResult.result_json[metricKey] as number;
     const currPythonVersionStr = `${currentRun.python_version.major}.${currentRun.python_version.minor}.${currentRun.python_version.patch}`;
@@ -205,12 +204,13 @@ export const getMockDiffTableRows = (
         if (prevMetricValue !== undefined && prevMetricValue !== 0) {
           metricDeltaPercent = ((currMetricValue - prevMetricValue) / prevMetricValue) * 100;
         } else if (prevMetricValue === 0 && currMetricValue !== 0) {
-          metricDeltaPercent = Infinity; // Or handle as a large number or special string
+          metricDeltaPercent = Infinity; 
+        } else if (prevMetricValue === undefined && currMetricValue !== undefined ) {
+           metricDeltaPercent = undefined; // New benchmark, no delta
         }
       }
     }
     
-    // Only add row if there's a current value. Previous value is optional.
     rows.push({
       benchmark_name: benchmarkName,
       metric_delta_percent: metricDeltaPercent,
