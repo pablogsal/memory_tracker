@@ -64,16 +64,16 @@ def generate_commits(count: int = 200) -> List[schemas.CommitCreate]:
 
 
 def generate_binaries() -> List[schemas.BinaryCreate]:
-    """Generate standard binary configurations."""
+    """Generate standard binary configurations with configure flags."""
     return [
-        schemas.BinaryCreate(id="default", name="Default", flags=[]),
-        schemas.BinaryCreate(id="debug", name="Debug", flags=["--with-debug"]),
-        schemas.BinaryCreate(id="nogil", name="No GIL", flags=["--disable-gil"]),
-        schemas.BinaryCreate(id="debug-nogil", name="Debug & No GIL", flags=["--with-debug", "--disable-gil"]),
-        schemas.BinaryCreate(id="lto", name="LTO Enabled", flags=["--with-lto"]),
-        schemas.BinaryCreate(id="pgo", name="PGO Optimized", flags=["--enable-optimizations"]),
-        schemas.BinaryCreate(id="trace", name="Trace Enabled", flags=["--with-trace-refs"]),
-        schemas.BinaryCreate(id="valgrind", name="Valgrind", flags=["--with-valgrind"]),
+        schemas.BinaryCreate(id="default", name="Default", flags=[], description="Standard CPython build with default compilation settings"),
+        schemas.BinaryCreate(id="debug", name="Debug", flags=["--with-debug"], description="Debug build with additional runtime checks"),
+        schemas.BinaryCreate(id="nogil", name="No GIL", flags=["--disable-gil"], description="Experimental build without the Global Interpreter Lock"),
+        schemas.BinaryCreate(id="debug-nogil", name="Debug & No GIL", flags=["--with-debug", "--disable-gil"], description="Debug build combined with no-GIL features"),
+        schemas.BinaryCreate(id="lto", name="LTO Enabled", flags=["--with-lto"], description="Link Time Optimization enabled"),
+        schemas.BinaryCreate(id="pgo", name="PGO Optimized", flags=["--enable-optimizations"], description="Profile Guided Optimization build"),
+        schemas.BinaryCreate(id="trace", name="Trace Enabled", flags=["--with-trace-refs"], description="Build with trace reference counting enabled"),
+        schemas.BinaryCreate(id="valgrind", name="Valgrind", flags=["--with-valgrind"], description="Build optimized for Valgrind memory debugging tool"),
     ]
 
 
@@ -232,7 +232,7 @@ async def populate_database():
             print("Creating binaries...")
             binary_data = generate_binaries()
             binary_objects = [
-                models.Binary(id=binary.id, name=binary.name, flags=binary.flags)
+                models.Binary(id=binary.id, name=binary.name, flags=binary.flags, description=binary.description)
                 for binary in binary_data
             ]
             db.add_all(binary_objects)

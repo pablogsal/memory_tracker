@@ -172,6 +172,59 @@ def run_benchmarks(venv_dir: Path, output_dir: Path, commit: git.Commit) -> None
             logger.debug(f"Cleaned up temporary directory: {temp_dir}")
 
 
+def list_binaries(server_url: str = "http://localhost:8000") -> list:
+    """List all available binaries from the server."""
+    try:
+        import requests
+        logger.info(f"Fetching available binaries from {server_url}")
+        response = requests.get(f"{server_url}/api/binaries", timeout=10)
+        response.raise_for_status()
+        logger.debug(f"Got {len(response.json())} binaries")
+        return response.json()
+    except requests.exceptions.RequestException as e:
+        raise ValueError(f"Failed to fetch binaries: {e}")
+
+
+def list_environments(server_url: str = "http://localhost:8000") -> list:
+    """List all available environments from the server."""
+    try:
+        import requests
+        logger.info(f"Fetching available environments from {server_url}")
+        response = requests.get(f"{server_url}/api/environments", timeout=10)
+        response.raise_for_status()
+        logger.debug(f"Got {len(response.json())} environments")
+        return response.json()
+    except requests.exceptions.RequestException as e:
+        raise ValueError(f"Failed to fetch environments: {e}")
+
+
+def validate_binary_and_environment(binary_id: str, environment_id: str, server_url: str = "http://localhost:8000") -> None:
+    """Validate that binary and environment exist on the server before running benchmarks."""
+    logger.info(f"Validating binary_id: {binary_id} and environment_id: {environment_id}")
+    
+    try:
+        import requests
+        
+        # Check if binary exists
+        logger.debug(f"Checking if binary '{binary_id}' exists")
+        binary_response = requests.get(f"{server_url}/api/binaries/{binary_id}", timeout=10)
+        if binary_response.status_code == 404:
+            raise ValueError(f"Binary '{binary_id}' not found on server. Please register the binary first.")
+        binary_response.raise_for_status()
+        
+        # Check if environment exists  
+        logger.debug(f"Checking if environment '{environment_id}' exists")
+        env_response = requests.get(f"{server_url}/api/environments/{environment_id}", timeout=10)
+        if env_response.status_code == 404:
+            raise ValueError(f"Environment '{environment_id}' not found on server. Please register the environment first.")
+        env_response.raise_for_status()
+        
+        logger.info(f"Successfully validated binary '{binary_id}' and environment '{environment_id}'")
+        
+    except requests.exceptions.RequestException as e:
+        raise ValueError(f"Failed to validate binary and environment: {e}")
+
+
 def upload_results_to_server(output_dir: Path, binary_id: str, environment_id: str, server_url: str = "http://localhost:8000") -> None:
     """Upload benchmark results to the server."""
     logger.info(f"Uploading results from {output_dir} to {server_url}")
@@ -227,6 +280,28 @@ def upload_results_to_server(output_dir: Path, binary_id: str, environment_id: s
         logger.info(f"Created {result.get('results_created')} benchmark results")
         logger.info(f"Detected binary: {result.get('binary_id')}, environment: {result.get('environment_id')}")
         
+    except requests.exceptions.HTTPError as e:
+        # Extract detailed error message from server response
+        error_detail = "Unknown error"
+        try:
+            if e.response.headers.get('content-type', '').startswith('application/json'):
+                error_json = e.response.json()
+                error_detail = error_json.get('detail', str(e))
+            else:
+                error_detail = e.response.text or str(e)
+        except Exception:
+            error_detail = str(e)
+        
+        logger.error(f"Server rejected upload (HTTP {e.response.status_code}): {error_detail}")
+        logger.info(f"Results are still saved locally in: {output_dir}")
+        raise ValueError(f"Upload failed: {error_detail}")
+        
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Failed to connect to server: {e}")
+        logger.info(f"Results are still saved locally in: {output_dir}")
+        raise ValueError(f"Connection failed: {e}")
+        
     except Exception as e:
-        logger.error(f"Failed to upload results to server: {e}")
-        logger.info(f"Results are still saved locally in: {output_dir}") 
+        logger.error(f"Unexpected error during upload: {e}")
+        logger.info(f"Results are still saved locally in: {output_dir}")
+        raise ValueError(f"Upload failed: {e}") 

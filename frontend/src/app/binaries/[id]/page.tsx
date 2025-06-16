@@ -217,51 +217,76 @@ export default function BinaryDetailPage({ params }: { params: Promise<{ id: str
     }
   };
 
-  // Helper function to get icon and description for each binary type
+  // Helper function to get icon and colors based on configure flags
   const getBinaryInfo = (binary: Binary) => {
-    const info = {
-      default: {
-        icon: Settings,
-        description: "Standard CPython build with default compilation settings. Used as baseline for performance comparisons.",
-        color: "text-primary",
-      },
-      debug: {
-        icon: Bug,
-        description: "Debug build with additional runtime checks and debugging symbols. Higher memory usage but better error detection.",
-        color: "text-destructive",
-      },
-      nogil: {
-        icon: Zap,
-        description: "Experimental build without the Global Interpreter Lock (GIL). Enables true parallelism for CPU-bound tasks.",
-        color: "text-yellow-600 dark:text-yellow-400",
-      },
-      "debug-nogil": {
+    const flags = binary.flags || [];
+    
+    // Determine type based on configure flags
+    const hasDebug = flags.includes('--with-debug');
+    const hasNoGil = flags.includes('--disable-gil');
+    const hasLTO = flags.includes('--with-lto');
+    const hasPGO = flags.includes('--enable-optimizations');
+    const hasTrace = flags.includes('--with-trace-refs');
+    const hasValgrind = flags.includes('--with-valgrind');
+    const isDefault = flags.length === 0;
+    
+    // Determine primary characteristic (priority order)
+    if (hasDebug && hasNoGil) {
+      return {
         icon: Shield,
-        description: "Debug build combined with no-GIL features. Best for development and testing of parallel applications.",
+        description: binary.description || "Debug build combined with no-GIL features",
         color: "text-purple-600 dark:text-purple-400",
-      },
-      lto: {
-        icon: Gauge,
-        description: "Link Time Optimization enabled. Performs cross-module optimizations for better performance.",
-        color: "text-green-600 dark:text-green-400",
-      },
-      pgo: {
-        icon: Zap,
-        description: "Profile Guided Optimization build. Uses runtime profiling data to optimize frequently executed code paths.",
-        color: "text-indigo-600 dark:text-indigo-400",
-      },
-      trace: {
-        icon: Search,
-        description: "Build with trace reference counting enabled. Useful for memory leak detection and debugging.",
-        color: "text-teal-600 dark:text-teal-400",
-      },
-      valgrind: {
+      };
+    } else if (hasValgrind) {
+      return {
         icon: Shield,
-        description: "Build optimized for Valgrind memory debugging tool. Includes additional instrumentation for memory analysis.",
+        description: binary.description || "Build optimized for Valgrind memory debugging tool",
         color: "text-orange-600 dark:text-orange-400",
-      },
-    };
-    return info[binary.id as keyof typeof info] || info.default;
+      };
+    } else if (hasTrace) {
+      return {
+        icon: Search,
+        description: binary.description || "Build with trace reference counting enabled",
+        color: "text-teal-600 dark:text-teal-400",
+      };
+    } else if (hasPGO) {
+      return {
+        icon: Zap,
+        description: binary.description || "Profile Guided Optimization build",
+        color: "text-indigo-600 dark:text-indigo-400",
+      };
+    } else if (hasLTO) {
+      return {
+        icon: Gauge,
+        description: binary.description || "Link Time Optimization enabled",
+        color: "text-green-600 dark:text-green-400",
+      };
+    } else if (hasNoGil) {
+      return {
+        icon: Zap,
+        description: binary.description || "Experimental build without the Global Interpreter Lock",
+        color: "text-yellow-600 dark:text-yellow-400",
+      };
+    } else if (hasDebug) {
+      return {
+        icon: Bug,
+        description: binary.description || "Debug build with additional runtime checks",
+        color: "text-destructive",
+      };
+    } else if (isDefault) {
+      return {
+        icon: Settings,
+        description: binary.description || "Standard CPython build with default settings",
+        color: "text-primary",
+      };
+    } else {
+      // Fallback for unknown combinations
+      return {
+        icon: Settings,
+        description: binary.description || "Custom build configuration",
+        color: "text-muted-foreground",
+      };
+    }
   };
 
   if (loading) {

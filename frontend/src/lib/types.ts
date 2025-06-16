@@ -8,6 +8,7 @@ export type Binary = {
   id: string;
   name: string;
   flags: string[];
+  description?: string;
 };
 
 export type Environment = {

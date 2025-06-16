@@ -9,13 +9,45 @@ from pathlib import Path
 from typing import Optional, Tuple
 import git
 
-# Configure logging
-logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
-)
+# Get logger (will be configured later based on verbosity)
 logger = logging.getLogger(__name__)
+
+def configure_logging(verbose: int):
+    """Configure logging based on verbosity level consistently across all commands."""
+    log_level = {
+        0: logging.WARNING,
+        1: logging.INFO,
+        2: logging.DEBUG,
+        3: logging.DEBUG,
+    }.get(verbose, logging.DEBUG)
+    
+    # Clear any existing handlers
+    root_logger = logging.getLogger()
+    for handler in root_logger.handlers[:]:
+        root_logger.removeHandler(handler)
+    
+    if verbose == 0:
+        # Suppress all logging when no -v (set to CRITICAL to hide everything)
+        root_logger.setLevel(logging.CRITICAL)
+        # Also suppress requests library logging
+        logging.getLogger('urllib3').setLevel(logging.CRITICAL)
+        logging.getLogger('urllib3.connectionpool').setLevel(logging.CRITICAL)
+    else:
+        # Configure logging with proper format
+        logging.basicConfig(
+            level=log_level,
+            format='%(asctime)s - %(levelname)s - %(message)s',
+            datefmt='%Y-%m-%d %H:%M:%S'
+        )
+        
+        # For debug level, also enable urllib3 debug logs
+        if verbose >= 2:
+            logging.getLogger('urllib3.connectionpool').setLevel(logging.DEBUG)
+        else:
+            # Keep urllib3 quiet at info level
+            logging.getLogger('urllib3').setLevel(logging.WARNING)
+    
+    return log_level
 
 def check_prerequisites() -> Tuple[bool, str]:
     """Check if all required system tools are available."""
@@ -128,6 +160,7 @@ def process_commit(
     verbose: int,
     binary_id: str,
     environment_id: str,
+    force: bool = False,
 ) -> Optional[str]:
     """Process a single commit."""
     build_dir = None
@@ -142,7 +175,23 @@ def process_commit(
         
         # Create unique directory for this run
         run_dir = output_dir / commit.hexsha
-        run_dir.mkdir(exist_ok=True)
+        
+        # Handle existing directory
+        if run_dir.exists():
+            if not force:
+                error_msg = f"Output directory for commit {commit.hexsha[:8]} already exists: {run_dir}. Use -f/--force to overwrite."
+                logger.error(error_msg)
+                return error_msg
+            else:
+                logger.info(f"Removing existing directory for commit {commit.hexsha[:8]}: {run_dir}")
+                try:
+                    shutil.rmtree(run_dir)
+                except Exception as e:
+                    error_msg = f"Failed to remove existing directory {run_dir}: {e}"
+                    logger.error(error_msg)
+                    return error_msg
+        
+        run_dir.mkdir(parents=True, exist_ok=True)
         logger.debug(f"Created run directory: {run_dir}")
         
         # Create temporary build directory
@@ -279,7 +328,16 @@ def process_commit(
             
             # Run benchmarks
             logger.info(f"Running benchmarks for commit {commit.hexsha[:8]}")
-            from .benchmarks import run_benchmarks, upload_results_to_server
+            from .benchmarks import run_benchmarks, upload_results_to_server, validate_binary_and_environment
+            
+            # Validate binary and environment before running benchmarks
+            try:
+                validate_binary_and_environment(binary_id, environment_id)
+            except ValueError as e:
+                error_msg = f"Validation failed for commit {commit.hexsha}: {e}"
+                logger.error(error_msg)
+                return error_msg
+            
             run_benchmarks(venv_dir, run_dir, commit)
             
             # Upload results to server
@@ -314,106 +372,41 @@ def process_commit(
             except Exception as e:
                 logger.warning(f"Failed to clean up build directory {build_dir}: {e}")
 
-def parse_args():
-    """Parse command line arguments."""
-    # Create a custom argument parser that handles quoted arguments correctly
-    class CustomArgumentParser(argparse.ArgumentParser):
-        def parse_args(self, args=None, namespace=None):
-            # If args is None, use sys.argv[1:]
-            if args is None:
-                args = sys.argv[1:]
-            
-            # Remove the 'benchmark' command if present
-            if args and args[0] == 'benchmark':
-                args = args[1:]
-            
-            return super().parse_args(args, namespace)
-
-    parser = CustomArgumentParser(
-        description="Memory tracker for CPython commits",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  # Run benchmarks on last 5 commits with optimized binary
-  memory-tracker benchmark HEAD~5..HEAD --binary-id=optimized --environment-id=linux-x86_64
-
-  # Use custom CPython repository  
-  memory-tracker benchmark /path/to/cpython HEAD~5..HEAD --binary-id=debug --environment-id=macos-x86_64
-
-  # Custom build flags
-  memory-tracker benchmark /path/to/cpython HEAD~5..HEAD --configure-flags="--enable-optimizations --with-lto" --make-flags="-j8" --binary-id=optimized --environment-id=linux-x86_64
-
-  # Custom output directory
-  memory-tracker benchmark /path/to/cpython HEAD~5..HEAD --output-dir="./my_benchmarks" --binary-id=default --environment-id=linux-x86_64
-
-  # Verbose output
-  memory-tracker benchmark HEAD~5..HEAD --binary-id=optimized --environment-id=linux-x86_64 -v
-"""
-    )
+def list_binaries_command(args):
+    """Handle list-binaries command."""
+    configure_logging(args.verbose)
+    from .benchmarks import list_binaries
     
-    parser.add_argument(
-        'repo_path',
-        nargs='?',
-        type=Path,
-        help='Path to CPython repository (optional, will clone if not provided)'
-    )
-    parser.add_argument(
-        'commit_range',
-        help='Git commit range to benchmark (e.g., HEAD~5..HEAD)'
-    )
-    parser.add_argument(
-        '--output-dir', '-o',
-        type=Path,
-        default=Path('./benchmark_results'),
-        help='Directory to store benchmark results (default: ./benchmark_results)'
-    )
-    parser.add_argument(
-        '--configure-flags', '-c',
-        default='--enable-optimizations',
-        help='Configure flags for CPython build (default: --enable-optimizations)'
-    )
-    parser.add_argument(
-        '--make-flags', '-m',
-        default='-j4',
-        help='Make flags for CPython build (default: -j4)'
-    )
-    parser.add_argument(
-        '-v', '--verbose',
-        action='count',
-        default=0,
-        help='Increase verbosity (can be used multiple times, e.g. -vvv)'
-    )
-    parser.add_argument(
-        '--binary-id',
-        required=True,
-        help='Binary ID to use for this run (e.g., optimized, debug, default)'
-    )
-    parser.add_argument(
-        '--environment-id', 
-        required=True,
-        help='Environment ID to use for this run (e.g., linux-x86_64, macos-x86_64)'
-    )
-    
-    return parser.parse_args()
+    try:
+        resources = list_binaries(args.server_url)
+        print(f"Available binaries on {args.server_url}:")
+        for binary in resources:
+            flags_str = " ".join(binary.get("flags", [])) if binary.get("flags") else "none"
+            print(f"  - {binary['id']}: {binary['name']} (flags: {flags_str})")
+    except ValueError as e:
+        print(f"Error fetching binaries: {e}", file=sys.stderr)
+        sys.exit(1)
 
-def main():
-    """Main entry point."""
-    args = parse_args()
+
+def list_environments_command(args):
+    """Handle list-environments command."""
+    configure_logging(args.verbose)
+    from .benchmarks import list_environments
     
-    # Set up logging based on verbosity
-    log_level = {
-        0: logging.WARNING,
-        1: logging.INFO,
-        2: logging.DEBUG,
-        3: logging.DEBUG,  # Even more verbose
-    }.get(args.verbose, logging.DEBUG)
-    
-    logging.basicConfig(
-        level=log_level,
-        format='%(asctime)s - %(levelname)s - %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
-    )
-    logger = logging.getLogger(__name__)
+    try:
+        resources = list_environments(args.server_url)
+        print(f"Available environments on {args.server_url}:")
+        for env in resources:
+            desc = env.get("description", "")
+            print(f"  - {env['id']}: {env['name']}" + (f" ({desc})" if desc else ""))
+    except ValueError as e:
+        print(f"Error fetching environments: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+def benchmark_command(args):
+    """Handle benchmark command."""
+    configure_logging(args.verbose)
     
     # Check prerequisites
     logger.info("Checking prerequisites...")
@@ -432,7 +425,7 @@ def main():
             logger.error(f"Failed to clone CPython repository: {e}")
             sys.exit(1)
     else:
-        repo_path = args.repo_path.resolve()  # Get absolute path
+        repo_path = args.repo_path.resolve()
         try:
             repo = git.Repo(repo_path)
         except git.InvalidGitRepositoryError:
@@ -448,7 +441,7 @@ def main():
     
     # Check output directory
     logger.info("Checking output directory...")
-    ok, msg = check_output_directory(args.output_dir.resolve())  # Get absolute path
+    ok, msg = check_output_directory(args.output_dir.resolve())
     if not ok:
         logger.error(f"Output directory check failed: {msg}")
         sys.exit(1)
@@ -458,6 +451,15 @@ def main():
     ok, msg = check_build_environment(repo_path)
     if not ok:
         logger.error(f"Build environment check failed: {msg}")
+        sys.exit(1)
+    
+    # Validate binary and environment before processing any commits
+    logger.info("Validating binary and environment registration...")
+    try:
+        from .benchmarks import validate_binary_and_environment
+        validate_binary_and_environment(args.binary_id, args.environment_id)
+    except ValueError as e:
+        logger.error(f"Pre-flight validation failed: {e}")
         sys.exit(1)
     
     # Get commits to process
@@ -490,7 +492,8 @@ def main():
             args.make_flags,
             args.verbose,
             args.binary_id,
-            args.environment_id
+            args.environment_id,
+            args.force
         )
         if error:
             errors.append((commit, error))
@@ -504,6 +507,121 @@ def main():
         logger.info("Build Summary (all successful):")
         for commit in commits:
             logger.info(f"Success {commit.hexsha[:8]}")
+
+
+def parse_args():
+    """Parse command line arguments using proper subcommands."""
+    parser = argparse.ArgumentParser(
+        description="Memory tracker for CPython commits",
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    
+    # Create subparsers
+    subparsers = parser.add_subparsers(dest='command', help='Available commands')
+    
+    # List binaries command
+    list_binaries_parser = subparsers.add_parser(
+        'list-binaries',
+        help='List available registered binaries from server'
+    )
+    list_binaries_parser.add_argument(
+        '-v', '--verbose',
+        action='count',
+        default=0,
+        help='Increase verbosity (can be used multiple times, e.g. -vvv)'
+    )
+    list_binaries_parser.add_argument(
+        '--server-url',
+        default='http://localhost:8000',
+        help='Server URL for API calls (default: http://localhost:8000)'
+    )
+    list_binaries_parser.set_defaults(func=list_binaries_command)
+    
+    # List environments command
+    list_environments_parser = subparsers.add_parser(
+        'list-environments', 
+        help='List available registered environments from server'
+    )
+    list_environments_parser.add_argument(
+        '-v', '--verbose',
+        action='count',
+        default=0,
+        help='Increase verbosity (can be used multiple times, e.g. -vvv)'
+    )
+    list_environments_parser.add_argument(
+        '--server-url',
+        default='http://localhost:8000',
+        help='Server URL for API calls (default: http://localhost:8000)'
+    )
+    list_environments_parser.set_defaults(func=list_environments_command)
+    
+    # Benchmark command
+    benchmark_parser = subparsers.add_parser(
+        'benchmark',
+        help='Run memory benchmarks on CPython commits'
+    )
+    benchmark_parser.add_argument(
+        'repo_path',
+        nargs='?',
+        type=Path,
+        help='Path to CPython repository (optional, will clone if not provided)'
+    )
+    benchmark_parser.add_argument(
+        'commit_range',
+        help='Git commit range to benchmark (e.g., HEAD~5..HEAD)'
+    )
+    benchmark_parser.add_argument(
+        '--output-dir', '-o',
+        type=Path,
+        default=Path('./benchmark_results'),
+        help='Directory to store benchmark results (default: ./benchmark_results)'
+    )
+    benchmark_parser.add_argument(
+        '--configure-flags', '-c',
+        default='--enable-optimizations',
+        help='Configure flags for CPython build (default: --enable-optimizations)'
+    )
+    benchmark_parser.add_argument(
+        '--make-flags', '-m',
+        default='-j4',
+        help='Make flags for CPython build (default: -j4)'
+    )
+    benchmark_parser.add_argument(
+        '-v', '--verbose',
+        action='count',
+        default=0,
+        help='Increase verbosity (can be used multiple times, e.g. -vvv)'
+    )
+    benchmark_parser.add_argument(
+        '--binary-id',
+        required=True,
+        help='Binary ID to use for this run (e.g., optimized, debug, default)'
+    )
+    benchmark_parser.add_argument(
+        '--environment-id', 
+        required=True,
+        help='Environment ID to use for this run (e.g., linux-x86_64, macos-x86_64)'
+    )
+    benchmark_parser.add_argument(
+        '-f', '--force',
+        action='store_true',
+        help='Force overwrite existing output directories for commits'
+    )
+    benchmark_parser.set_defaults(func=benchmark_command)
+    
+    return parser.parse_args()
+
+def main():
+    """Main entry point."""
+    args = parse_args()
+    
+    # Handle case where no subcommand is provided
+    if not hasattr(args, 'func'):
+        print("Error: No command specified. Use -h for help.", file=sys.stderr)
+        sys.exit(1)
+    
+    # Call the appropriate command function
+    args.func(args)
 
 if __name__ == '__main__':
     main() 

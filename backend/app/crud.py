@@ -52,6 +52,7 @@ async def create_binary(db: AsyncSession, binary: schemas.BinaryCreate) -> model
         id=binary.id,
         name=binary.name,
         flags=binary.flags,
+        description=binary.description,
     )
     db.add(db_binary)
     await db.commit()

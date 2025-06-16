@@ -29,7 +29,8 @@ class Commit(CommitBase):
 class BinaryBase(BaseModel):
     id: str
     name: str
-    flags: List[str]
+    flags: List[str]  # Configure flags used to build Python (e.g., --enable-optimizations, --with-debug)
+    description: Optional[str] = None  # Description of what this binary configuration does
 
 
 class BinaryCreate(BinaryBase):

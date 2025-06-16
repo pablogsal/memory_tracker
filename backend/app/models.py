@@ -32,6 +32,7 @@ class Binary(Base):
     id = Column(String(50), primary_key=True)
     name = Column(String(255), nullable=False)
     flags = Column(JSON, nullable=False)  # Array of strings
+    description = Column(Text, nullable=True)  # Description of what this binary configuration does
     
     runs = relationship("Run", back_populates="binary")
 
