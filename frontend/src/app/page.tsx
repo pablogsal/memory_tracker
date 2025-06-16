@@ -1,4 +1,3 @@
-
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { LineChart, GitCompareArrows, Pyramid, ListChecks } from "lucide-react"; // Removed UploadCloud
@@ -14,11 +13,11 @@ export default function Home() {
       cta: "View Trends",
     },
     {
-      title: "Diff Table View",
-      description: "Compare benchmark results commit-to-commit, highlighting changes.",
+      title: "Inspect Run Results",
+      description: "Analyze memory metrics for specific runs and compare with previous results.",
       icon: GitCompareArrows,
       href: "/diff",
-      cta: "Analyze Diffs",
+      cta: "Inspect Results",
     },
     {
       title: "Inspect Binaries",

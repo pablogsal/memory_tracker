@@ -16,6 +16,7 @@ export type Commit = {
   message: string;
   author: string;
   python_version: PythonVersion;
+  prev_commit?: Commit;
 };
 
 export type PythonVersionFilterOption = {

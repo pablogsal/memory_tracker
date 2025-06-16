@@ -6,7 +6,7 @@ import { Toaster } from "@/components/ui/toaster";
 
 export const metadata: Metadata = {
   title: 'CPython Memory Insights',
-  description: 'Analyze CPython memory benchmark data',
+  description: 'Analyze and compare CPython memory benchmark runs',
 };
 
 export default function RootLayout({

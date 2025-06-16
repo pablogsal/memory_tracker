@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState, useMemo, useEffect } from 'react';
@@ -66,6 +65,10 @@ export default function DiffTablePage() {
   
   const selectedCommitDetails = useMemo(() => commits.find(c => c.sha === selectedCommitSha), [selectedCommitSha, commits]);
   const selectedCommitPythonVersion = useMemo(() => selectedCommitDetails?.python_version, [selectedCommitDetails]);
+  const previousCommitDetails = useMemo(() => {
+    if (!diffData.length) return undefined;
+    return diffData[0].prev_commit_details;
+  }, [diffData]);
 
   // Load initial data
   useEffect(() => {
@@ -112,8 +115,16 @@ export default function DiffTablePage() {
       try {
         // Fetch diff data for both metrics
         const [highWatermarkData, totalAllocatedData] = await Promise.all([
-          api.getDiffTable(selectedCommitSha, selectedBinaryId, 'high_watermark_bytes'),
-          api.getDiffTable(selectedCommitSha, selectedBinaryId, 'total_allocated_bytes')
+          api.getDiffTable({
+            commit_sha: selectedCommitSha,
+            binary_id: selectedBinaryId,
+            metric_key: 'high_watermark_bytes'
+          }),
+          api.getDiffTable({
+            commit_sha: selectedCommitSha,
+            binary_id: selectedBinaryId,
+            metric_key: 'total_allocated_bytes'
+          })
         ]);
 
         // Combine the data into enhanced rows
@@ -257,16 +268,16 @@ export default function DiffTablePage() {
 
   if (!mounted || loading) {
     return <div className="space-y-6">
-     <h1 className="text-3xl font-bold font-headline">Commit Benchmark Comparison</h1>
+     <h1 className="text-3xl font-bold font-headline">Inspect Run Results</h1>
      <Card><CardHeader><CardTitle>Filters</CardTitle></CardHeader><CardContent><div className="h-48 animate-pulse bg-muted rounded-md"></div></CardContent></Card>
-     <Card><CardHeader><CardTitle>Comparison Table</CardTitle></CardHeader><CardContent><div className="h-96 animate-pulse bg-muted rounded-md"></div></CardContent></Card>
+     <Card><CardHeader><CardTitle>Results Table</CardTitle></CardHeader><CardContent><div className="h-96 animate-pulse bg-muted rounded-md"></div></CardContent></Card>
    </div>;
   }
 
   if (error) {
     return (
       <div className="space-y-6">
-        <h1 className="text-3xl font-bold font-headline">Commit Benchmark Comparison</h1>
+        <h1 className="text-3xl font-bold font-headline">Inspect Run Results</h1>
         <Card>
           <CardContent className="flex flex-col items-center justify-center h-64 text-muted-foreground">
             <AlertCircle className="w-16 h-16 mb-4 text-red-500" />
@@ -281,21 +292,21 @@ export default function DiffTablePage() {
   return (
     <TooltipProvider delayDuration={100}>
       <div className="space-y-6">
-        <h1 className="text-3xl font-bold font-headline">Commit Benchmark Comparison</h1>
+        <h1 className="text-3xl font-bold font-headline">Inspect Run Results</h1>
         <p className="text-muted-foreground">
-          Select a commit to see changes compared to its direct predecessor (for the same Python major.minor version), using the chosen binary flags.
+          Select a run to inspect its memory metrics and compare with the previous run under the same Python version and binary configuration.
         </p>
 
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2"><Filter className="h-5 w-5 text-primary" /> Filters</CardTitle>
           </CardHeader>
-          <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 items-end">
-            <div className="space-y-1">
-              <Label htmlFor="filter-commit">Commit</Label>
+          <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 items-start">
+            <div className="space-y-3">
+              <Label htmlFor="filter-commit">Run</Label>
               <Select value={selectedCommitSha} onValueChange={setSelectedCommitSha}>
                 <SelectTrigger id="filter-commit">
-                  <SelectValue placeholder="Select Commit" />
+                  <SelectValue placeholder="Select Run" />
                 </SelectTrigger>
                 <SelectContent>
                   {commits.map(commit => (
@@ -310,28 +321,51 @@ export default function DiffTablePage() {
                   ))}
                 </SelectContent>
               </Select>
-               {selectedCommitDetails && (
-                <div className="flex items-center gap-2 mt-1">
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button variant="ghost" size="sm" className="text-xs px-2 py-1 h-auto text-muted-foreground">
-                        <Info className="h-3 w-3 mr-1" /> View Commit Details
+              {selectedCommitDetails && (
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center gap-2">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button variant="ghost" size="sm" className="text-xs px-2 py-1 h-auto text-muted-foreground">
+                          <Info className="h-3 w-3 mr-1" /> View Run Details
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom" align="start">
+                        <CommitTooltipContent commit={selectedCommitDetails} />
+                      </TooltipContent>
+                    </Tooltip>
+                    {selectedCommitPythonVersion && (
+                      <span className="text-xs text-muted-foreground flex items-center">
+                        <Code2 className="h-3 w-3 mr-1 text-primary" /> Python {selectedCommitPythonVersion.major}.{selectedCommitPythonVersion.minor}.{selectedCommitPythonVersion.patch}
+                      </span>
+                    )}
+                  </div>
+                  {previousCommitDetails && (
+                    <div className="flex items-center gap-2 text-sm">
+                      <span className="text-muted-foreground">Previous run:</span>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="font-mono cursor-help">{previousCommitDetails.sha.substring(0,7)}</span>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom" align="start">
+                          <CommitTooltipContent commit={previousCommitDetails} />
+                        </TooltipContent>
+                      </Tooltip>
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        className="text-xs px-2 py-1 h-auto"
+                        onClick={() => setSelectedCommitSha(previousCommitDetails.sha)}
+                      >
+                        Inspect Previous
                       </Button>
-                    </TooltipTrigger>
-                    <TooltipContent side="bottom" align="start">
-                      <CommitTooltipContent commit={selectedCommitDetails} />
-                    </TooltipContent>
-                  </Tooltip>
-                  {selectedCommitPythonVersion && (
-                    <span className="text-xs text-muted-foreground flex items-center">
-                      <Code2 className="h-3 w-3 mr-1 text-primary" /> Python {selectedCommitPythonVersion.major}.{selectedCommitPythonVersion.minor}.{selectedCommitPythonVersion.patch}
-                    </span>
+                    </div>
                   )}
                 </div>
               )}
             </div>
 
-            <div className="space-y-1">
+            <div className="space-y-3">
               <Label htmlFor="filter-binary">Binary Flags</Label>
               <Select value={selectedBinaryId} onValueChange={setSelectedBinaryId}>
                 <SelectTrigger id="filter-binary"><SelectValue placeholder="Select Binary Flags" /></SelectTrigger>
@@ -340,21 +374,23 @@ export default function DiffTablePage() {
                 </SelectContent>
               </Select>
             </div>
-            
 
-            <div className="space-y-1">
+            <div className="space-y-3">
               <Label htmlFor="filter-benchmark-name">Benchmark Name</Label>
               <Input id="filter-benchmark-name" placeholder="e.g., pyperformance_go" value={filterBenchmarkName} onChange={e => setFilterBenchmarkName(e.target.value)} />
             </div>
-             <div className="space-y-1">
+
+            <div className="space-y-3">
               <Label htmlFor="filter-threshold">Min. Change Threshold (%)</Label>
               <Input id="filter-threshold" type="number" placeholder="e.g., 5" value={filterThreshold} onChange={e => setFilterThreshold(Number(e.target.value))} />
             </div>
-            <div className="flex items-center space-x-2 pt-4 md:pt-0 lg:pt-4"> {/* Adjusted for layout */}
+
+            <div className="flex items-center space-x-2 pt-2">
               <Checkbox id="show-regressions" checked={showOnlyRegressions} onCheckedChange={c => setShowOnlyRegressions(c as boolean)} />
               <Label htmlFor="show-regressions">Only Regressions</Label>
             </div>
-            <div className="flex items-center space-x-2 pt-4 md:pt-0 lg:pt-4"> {/* Adjusted for layout */}
+
+            <div className="flex items-center space-x-2 pt-2">
               <Checkbox id="show-improvements" checked={showOnlyImprovements} onCheckedChange={c => setShowOnlyImprovements(c as boolean)} />
               <Label htmlFor="show-improvements">Only Improvements</Label>
             </div>
@@ -366,15 +402,20 @@ export default function DiffTablePage() {
             <div>
               <CardTitle className="flex items-center gap-2">
                 <GitCompareArrows className="h-6 w-6 text-primary" />
-                Comparison Table
+                Run Results Table
               </CardTitle>
               {selectedCommitDetails && selectedCommitPythonVersion && (
-                <CardDescription>
-                  Showing {filteredAndSortedData.length} comparisons for commit <Tooltip><TooltipTrigger asChild><span className="font-mono cursor-help">{selectedCommitSha?.substring(0,7)}</span></TooltipTrigger><TooltipContent><CommitTooltipContent commit={selectedCommitDetails} /></TooltipContent></Tooltip> 
-                  (Python {selectedCommitPythonVersion.major}.{selectedCommitPythonVersion.minor}.{selectedCommitPythonVersion.patch}) vs. its parent (if same Python major.minor).
-                  <br />
-                  Binary: {binaries.find(b=>b.id === selectedBinaryId)?.name}.
-                  Displaying both high watermark and total allocated bytes with percentage changes.
+                <CardDescription className="mt-2 space-y-2">
+                  <div>
+                    Showing {filteredAndSortedData.length} benchmark results for run <Tooltip><TooltipTrigger asChild><span className="font-mono cursor-help">{selectedCommitSha?.substring(0,7)}</span></TooltipTrigger><TooltipContent><CommitTooltipContent commit={selectedCommitDetails} /></TooltipContent></Tooltip> 
+                    (Python {selectedCommitPythonVersion.major}.{selectedCommitPythonVersion.minor}.{selectedCommitPythonVersion.patch})
+                  </div>
+                  <div>
+                    Binary Configuration: {binaries.find(b=>b.id === selectedBinaryId)?.name}
+                  </div>
+                  <div className="text-muted-foreground">
+                    Displaying both high watermark and total allocated bytes with percentage changes.
+                  </div>
                 </CardDescription>
               )}
             </div>
@@ -383,7 +424,7 @@ export default function DiffTablePage() {
               Export (CSV)
             </Button>
           </CardHeader>
-          <CardContent>
+          <CardContent className="pt-4">
             {filteredAndSortedData.length > 0 ? (
             <div className="overflow-x-auto">
               <Table className="min-w-full">
@@ -450,7 +491,7 @@ export default function DiffTablePage() {
               <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
                 <AlertCircle className="w-12 h-12 mb-4" />
                 <p className="text-lg">No comparisons match your current filters or data is unavailable.</p>
-                <p className="text-sm">Ensure the selected commit has a predecessor with comparable data for the same Python major.minor version, chosen binary, and metric.</p>
+                <p className="text-sm mt-2">Ensure the selected commit has a predecessor with comparable data for the same Python major.minor version, chosen binary, and metric.</p>
               </div>
             )}
           </CardContent>

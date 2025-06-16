@@ -1,4 +1,3 @@
-
 "use client";
 
 import Link from 'next/link';
@@ -11,8 +10,8 @@ import { useState, useEffect } from 'react';
 
 const navItems = [
   { href: '/trends', label: 'Benchmark Trends', icon: LineChart },
-  { href: '/diff', label: 'Diff Table View', icon: GitCompareArrows },
-  { href: '/binaries', label: 'Inspect Binaries', icon: ListChecks },
+  { href: '/diff', label: 'Inspect Run Results', icon: GitCompareArrows },
+  { href: '/binaries', label: 'Binary Configurations', icon: ListChecks },
   // { href: '/upload', label: 'Upload Data', icon: UploadCloud }, // Removed
 ];
 
