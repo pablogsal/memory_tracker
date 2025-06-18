@@ -67,39 +67,30 @@ def generate_binaries() -> List[schemas.BinaryCreate]:
     """Generate standard binary configurations with configure flags."""
     return [
         schemas.BinaryCreate(id="default", name="Default", flags=[], description="Standard CPython build with default compilation settings"),
-        schemas.BinaryCreate(id="debug", name="Debug", flags=["--with-debug"], description="Debug build with additional runtime checks"),
+        schemas.BinaryCreate(id="debug", name="Debug", flags=["--with-debug"], description="Debug build with additional runtime checks and memory overhead"),
         schemas.BinaryCreate(id="nogil", name="No GIL", flags=["--disable-gil"], description="Experimental build without the Global Interpreter Lock"),
-        schemas.BinaryCreate(id="debug-nogil", name="Debug & No GIL", flags=["--with-debug", "--disable-gil"], description="Debug build combined with no-GIL features"),
-        schemas.BinaryCreate(id="lto", name="LTO Enabled", flags=["--with-lto"], description="Link Time Optimization enabled"),
-        schemas.BinaryCreate(id="pgo", name="PGO Optimized", flags=["--enable-optimizations"], description="Profile Guided Optimization build"),
-        schemas.BinaryCreate(id="trace", name="Trace Enabled", flags=["--with-trace-refs"], description="Build with trace reference counting enabled"),
-        schemas.BinaryCreate(id="valgrind", name="Valgrind", flags=["--with-valgrind"], description="Build optimized for Valgrind memory debugging tool"),
     ]
 
 
 def generate_environments() -> List[schemas.EnvironmentCreate]:
     """Generate standard environment configurations."""
     return [
-        schemas.EnvironmentCreate(id="gcc-10", name="GCC 10", description="Compiled with GCC 10 compiler on Ubuntu 20.04"),
-        schemas.EnvironmentCreate(id="gcc-11", name="GCC 11", description="Compiled with GCC 11 compiler on Ubuntu 22.04"),
-        schemas.EnvironmentCreate(id="clang-14", name="Clang 14", description="Compiled with Clang 14 compiler"),
-        schemas.EnvironmentCreate(id="msvc-2022", name="MSVC 2022", description="Compiled with Microsoft Visual C++ 2022 on Windows"),
-        schemas.EnvironmentCreate(id="macos-arm64", name="macOS ARM64", description="Native compilation on Apple Silicon M1/M2"),
-        schemas.EnvironmentCreate(id="macos-x86", name="macOS x86_64", description="Intel x86_64 compilation on macOS"),
-        schemas.EnvironmentCreate(id="linux-arm64", name="Linux ARM64", description="Native ARM64 compilation on Linux"),
+        schemas.EnvironmentCreate(id="gcc-11", name="GCC 11 + Ubuntu 22.04", description="Compiled with GCC 11 compiler on Ubuntu 22.04 LTS"),
+        schemas.EnvironmentCreate(id="clang-14", name="Clang 14 + Ubuntu 22.04", description="Compiled with Clang 14 compiler on Ubuntu 22.04 LTS"),
     ]
 
 
-def generate_runs(commits: List[models.Commit], binaries: List[models.Binary], runs_per_commit: int = 6) -> List[schemas.RunCreate]:
-    """Generate runs for commits and binaries."""
+def generate_runs(commits: List[models.Commit], binaries: List[models.Binary], environments: List[models.Environment]) -> List[schemas.RunCreate]:
+    """Generate runs for commits and binaries - test all binaries for each commit."""
     runs = []
     
     for commit in commits:
-        # Randomly select binaries for this commit
-        selected_binaries = random.sample(binaries, min(runs_per_commit, len(binaries)))
-        
-        for i, binary in enumerate(selected_binaries):
-            run_id = f"run_{commit.sha[:8]}_{binary.id}_{i}"
+        # Test all binaries for each commit to ensure complete data coverage
+        for binary in binaries:
+            # Randomly select environment (both should be tested over time)
+            environment = random.choice(environments)
+            
+            run_id = f"run_{commit.sha[:8]}_{binary.id}_{environment.id}"
             # Run timestamp is slightly after commit timestamp
             run_timestamp = commit.timestamp + timedelta(minutes=random.randint(5, 60))
             
@@ -107,6 +98,7 @@ def generate_runs(commits: List[models.Commit], binaries: List[models.Binary], r
                 run_id=run_id,
                 commit_sha=commit.sha,
                 binary_id=binary.id,
+                environment_id=environment.id,
                 python_version=schemas.PythonVersion(
                     major=commit.python_major,
                     minor=commit.python_minor,
@@ -120,74 +112,123 @@ def generate_runs(commits: List[models.Commit], binaries: List[models.Binary], r
 
 
 def generate_benchmark_results(runs: List[models.Run]) -> List[schemas.BenchmarkResultCreate]:
-    """Generate benchmark results for runs."""
+    """Generate realistic benchmark results with correlated trends between binary configurations."""
     benchmark_names = [
-        "pyperformance_go", "pyperformance_json_dumps", "pyperformance_regex_dna",
-        "custom_memory_test_A", "custom_memory_test_B", "startup_time", 
-        "threading_overhead", "dict_operations", "list_operations",
-        "string_operations", "file_io", "network_io"
+        "dict_operations", "list_operations", "string_operations", 
+        "threading_overhead", "file_io", "network_io",
+        "custom_memory_test_A", "custom_memory_test_B"
     ]
     
     results = []
     
+    # Define realistic base memory usage for each benchmark (in bytes)
+    benchmark_base_memory = {
+        "dict_operations": 2_500_000,      # 2.5MB
+        "list_operations": 3_200_000,      # 3.2MB  
+        "string_operations": 1_800_000,    # 1.8MB
+        "threading_overhead": 4_100_000,   # 4.1MB
+        "file_io": 2_900_000,              # 2.9MB
+        "network_io": 3_700_000,           # 3.7MB
+        "custom_memory_test_A": 5_500_000, # 5.5MB
+        "custom_memory_test_B": 4_800_000, # 4.8MB
+    }
+    
+    # Group runs by commit, benchmark, and environment to create correlated data
+    commit_benchmark_env_data = {}
+    
     for run in runs:
-        # Each run has results for most benchmarks (more complete data)
-        selected_benchmarks = random.sample(benchmark_names, random.randint(8, len(benchmark_names)))
+        for benchmark_name in benchmark_names:
+            key = (run.commit_sha, benchmark_name, run.environment_id)
+            if key not in commit_benchmark_env_data:
+                commit_benchmark_env_data[key] = {}
+            commit_benchmark_env_data[key][run.binary_id] = run
+    
+    # Generate data where Debug and NoGIL are correlated with Default
+    for (commit_sha, benchmark_name, environment_id), binary_runs in commit_benchmark_env_data.items():
+        # Get base memory for this benchmark
+        base_memory = benchmark_base_memory[benchmark_name]
         
-        for benchmark in selected_benchmarks:
-            # Generate realistic benchmark data with some variation
-            base_memory = random.randint(500000, 5000000)  # 500KB to 5MB
-            variation = random.uniform(0.8, 1.2)
+        # Generate a consistent "default" memory value for this commit+benchmark
+        # Add variation based on Python version and environment
+        if 'default' in binary_runs:
+            default_run = binary_runs['default']
             
-            # Add some correlation with binary type
-            if "debug" in run.binary_id:
-                variation *= 1.3  # Debug builds use more memory
-            if "nogil" in run.binary_id:
-                variation *= 0.9  # No-GIL might be slightly more efficient
-            if "lto" in run.binary_id or "pgo" in run.binary_id:
-                variation *= 0.95  # Optimized builds use less memory
+            # Version factor
+            version_factor = 1.0
+            if default_run.python_major == 3 and default_run.python_minor >= 12:
+                version_factor = 0.97  # 3% improvement in newer versions
+            elif default_run.python_major == 3 and default_run.python_minor >= 13:
+                version_factor = 0.94  # 6% improvement in latest versions
             
-            high_watermark = int(base_memory * variation)
-            total_allocated = int(high_watermark * random.uniform(1.5, 3.0))
+            # Environment factor
+            env_factor = 1.0
+            if hasattr(default_run, 'environment_id') and default_run.environment_id == 'clang-14':
+                env_factor = 0.98  # Clang might be slightly more efficient
             
-            # Generate allocation histogram
-            histogram = []
-            for size in [16, 32, 64, 128, 256, 512, 1024]:
-                count = int(1000 * random.uniform(0.1, 2.0) / (size / 16))
-                if count > 0:
-                    histogram.append([size, count])
+            # Random variation for this specific commit+benchmark+environment combination
+            # Use commit hash as seed for consistency across binaries
+            random.seed(hash(f"{commit_sha}_{benchmark_name}_{environment_id}"))
+            base_random_factor = random.uniform(0.85, 1.15)
+            random.seed()  # Reset to global seed
             
-            # Generate top allocating functions
-            functions = ["malloc", "PyObject_Malloc", "new_object", "list_append", "dict_setitem"]
-            top_functions = []
-            remaining_size = total_allocated
+            # Calculate the "default" memory usage
+            default_memory = int(base_memory * version_factor * env_factor * base_random_factor)
+        else:
+            # Fallback if no default run exists
+            default_memory = base_memory
+        
+        # Now generate correlated data for all binaries based on the default value
+        for binary_id, run in binary_runs.items():
+            if binary_id == 'default':
+                calculated_memory = default_memory
+            elif binary_id == 'debug':
+                # Debug is consistently higher than default, but correlated
+                debug_factor = random.uniform(1.30, 1.40)  # 30-40% more memory
+                calculated_memory = int(default_memory * debug_factor)
+            elif binary_id == 'nogil':
+                # NoGIL is correlated with default but usually slightly better
+                nogil_factor = random.uniform(0.88, 0.96)  # 4-12% less memory
+                calculated_memory = int(default_memory * nogil_factor)
+            else:
+                calculated_memory = default_memory
             
-            for func in random.sample(functions, min(3, len(functions))):
-                func_size = int(remaining_size * random.uniform(0.1, 0.4))
-                func_count = int(func_size / random.randint(100, 1000))
-                top_functions.append({
-                    "function": func,
-                    "count": func_count,
-                    "total_size": func_size
-                })
-                remaining_size -= func_size
-                if remaining_size <= 0:
-                    break
+            # Create allocation histogram
+            histogram = [[16, random.randint(1000, 5000)], 
+                        [32, random.randint(500, 2000)], 
+                        [64, random.randint(50, 200)]]
             
-            result_json = schemas.BenchmarkResultJson(
-                high_watermark_bytes=high_watermark,
-                allocation_histogram=histogram,
-                total_allocated_bytes=total_allocated,
-                top_allocating_functions=[
-                    schemas.TopAllocatingFunction(**func) for func in top_functions
-                ],
-                benchmark_name=benchmark
-            )
+            # Generate total allocated bytes (higher than high watermark)
+            total_allocated = int(calculated_memory * random.uniform(2.5, 4.0))
+            
+            # Create mock top allocating functions with correct schema
+            top_functions = [
+                schemas.TopAllocatingFunction(
+                    function=f"PyDict_{random.choice(['SetItem', 'GetItem', 'New', 'Resize'])}",
+                    count=random.randint(1000, 10000),
+                    total_size=random.randint(50000, 500000)
+                ),
+                schemas.TopAllocatingFunction(
+                    function=f"PyList_{random.choice(['Append', 'New', 'Resize', 'SetSlice'])}",
+                    count=random.randint(500, 8000),
+                    total_size=random.randint(30000, 400000)
+                ),
+                schemas.TopAllocatingFunction(
+                    function=f"PyUnicode_{random.choice(['New', 'Concat', 'FromString', 'Decode'])}",
+                    count=random.randint(2000, 15000),
+                    total_size=random.randint(40000, 600000)
+                )
+            ]
             
             result = schemas.BenchmarkResultCreate(
                 run_id=run.run_id,
-                benchmark_name=benchmark,
-                result_json=result_json
+                benchmark_name=benchmark_name,
+                result_json=schemas.BenchmarkResultJson(
+                    high_watermark_bytes=calculated_memory,
+                    allocation_histogram=histogram,
+                    total_allocated_bytes=total_allocated,
+                    top_allocating_functions=top_functions
+                ),
+                flamegraph_html=f"<svg>Mock flamegraph for {benchmark_name} on {binary_id}</svg>"
             )
             results.append(result)
     
@@ -250,19 +291,15 @@ async def populate_database():
             await db.flush()
             print(f"✅ Created {len(environment_objects)} environments")
             
-            # Generate runs: each commit x each binary x subset of environments
+            # Generate runs: each commit x each binary x each environment for complete coverage
             print("Creating runs...")
             run_objects = []
             run_counter = 0
             
             for commit_obj in commit_objects:
                 for binary_obj in binary_objects:
-                    # Not every binary is tested in every environment - create realistic distribution
-                    # Most binaries tested in 3-5 environments, some rare combinations
-                    num_environments = random.choices([2, 3, 4, 5], weights=[10, 40, 30, 20])[0]
-                    selected_environments = random.sample(environment_objects, min(num_environments, len(environment_objects)))
-                    
-                    for env_obj in selected_environments:
+                    # Test each binary in both environments for complete data coverage
+                    for env_obj in environment_objects:
                         run_id = f"run_{commit_obj.sha[:8]}_{binary_obj.id}_{env_obj.id}_{run_counter}"
                         run_timestamp = commit_obj.timestamp + timedelta(minutes=random.randint(5, 60))
                         
@@ -288,92 +325,25 @@ async def populate_database():
             
             print(f"✅ Created {len(run_objects)} runs")
             
-            # Generate benchmark results in bulk
+            # Generate benchmark results using the realistic data function
             print("Creating benchmark results...")
-            benchmark_names = [
-                "pyperformance_go", "pyperformance_json_dumps", "pyperformance_regex_dna",
-                "custom_memory_test_A", "custom_memory_test_B", "startup_time", 
-                "threading_overhead", "dict_operations", "list_operations",
-                "string_operations", "file_io", "network_io"
-            ]
+            benchmark_results_data = generate_benchmark_results(run_objects)
             
+            # Convert to database objects
             result_objects = []
-            result_counter = 0
-            
-            for run_obj in run_objects:
-                # Each run gets 8-12 benchmark results
-                selected_benchmarks = random.sample(benchmark_names, random.randint(8, len(benchmark_names)))
+            for result_data in benchmark_results_data:
+                result_id = f"{result_data.run_id}_{result_data.benchmark_name.replace('_', '-')}"
                 
-                for benchmark_name in selected_benchmarks:
-                    result_id = f"{run_obj.run_id}_{benchmark_name.replace('_', '-')}"
-                    
-                    # Create realistic trends based on commit age and benchmark type
-                    commit_age_days = (datetime.now() - run_obj.timestamp).days
-                    
-                    # Base memory values per benchmark (realistic baselines)
-                    benchmark_baselines = {
-                        "pyperformance_go": 2500000,
-                        "pyperformance_json_dumps": 1500000,
-                        "pyperformance_regex_dna": 800000,
-                        "custom_memory_test_A": 3000000,
-                        "custom_memory_test_B": 2000000,
-                        "startup_time": 500000,
-                        "threading_overhead": 1200000,
-                        "dict_operations": 900000,
-                        "list_operations": 1100000,
-                        "string_operations": 700000,
-                        "file_io": 1800000,
-                        "network_io": 2200000
-                    }
-                    
-                    base_memory = benchmark_baselines.get(benchmark_name, 1000000)
-                    
-                    # Create gradual improvement trend over time (newer commits = better performance)
-                    trend_factor = 1.0 + (commit_age_days * 0.002)  # ~0.2% worse per day older
-                    
-                    # Add some realistic noise (±5%)
-                    noise = random.uniform(0.95, 1.05)
-                    
-                    # Binary-specific consistent effects
-                    binary_factor = 1.0
-                    if "debug" in run_obj.binary_id:
-                        binary_factor = 1.35  # Debug consistently uses more memory
-                    elif "nogil" in run_obj.binary_id:
-                        binary_factor = 0.92  # No-GIL slightly better
-                    elif "lto" in run_obj.binary_id:
-                        binary_factor = 0.88  # LTO optimized significantly better
-                    elif "pgo" in run_obj.binary_id:
-                        binary_factor = 0.85  # PGO even better
-                    elif "valgrind" in run_obj.binary_id:
-                        binary_factor = 1.45  # Valgrind overhead
-                    
-                    # Python version effects
-                    version_factor = 1.0
-                    if run_obj.python_major == 3 and run_obj.python_minor == 13:
-                        version_factor = 0.95  # Python 3.13 slightly more efficient
-                    elif run_obj.python_major == 3 and run_obj.python_minor == 11:
-                        version_factor = 1.08  # Python 3.11 slightly less efficient
-                    
-                    high_watermark = int(base_memory * trend_factor * noise * binary_factor * version_factor)
-                    total_allocated = int(high_watermark * random.uniform(2.2, 2.8))  # More consistent ratio
-                    
-                    # Simple histogram and top functions
-                    histogram = [[16, random.randint(100, 1000)], [32, random.randint(50, 500)], [64, random.randint(20, 200)]]
-                    top_functions = [
-                        {"function": "malloc", "count": random.randint(100, 1000), "total_size": random.randint(10000, 100000)},
-                        {"function": "PyObject_Malloc", "count": random.randint(50, 500), "total_size": random.randint(5000, 50000)},
-                    ]
-                    
-                    result_objects.append(models.BenchmarkResult(
-                        id=result_id,
-                        run_id=run_obj.run_id,
-                        benchmark_name=benchmark_name,
-                        high_watermark_bytes=high_watermark,
-                        allocation_histogram=histogram,
-                        total_allocated_bytes=total_allocated,
-                        top_allocating_functions=top_functions,
-                    ))
-                    result_counter += 1
+                result_objects.append(models.BenchmarkResult(
+                    id=result_id,
+                    run_id=result_data.run_id,
+                    benchmark_name=result_data.benchmark_name,
+                    high_watermark_bytes=result_data.result_json.high_watermark_bytes,
+                    allocation_histogram=result_data.result_json.allocation_histogram,
+                    total_allocated_bytes=result_data.result_json.total_allocated_bytes,
+                    top_allocating_functions=[func.model_dump() for func in result_data.result_json.top_allocating_functions],
+                    flamegraph_html=result_data.flamegraph_html
+                ))
             
             # Bulk insert benchmark results in batches
             for i in range(0, len(result_objects), batch_size):
