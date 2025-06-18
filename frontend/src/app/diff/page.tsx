@@ -59,6 +59,7 @@ function DiffTableContent() {
   const [diffData, setDiffData] = useState<EnhancedDiffTableRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedPythonVersion, setSelectedPythonVersion] = useState<string | undefined>();
 
   const [filterBenchmarkName, setFilterBenchmarkName] = useState('');
   const [selectedCommitSha, setSelectedCommitSha] = useState<string | undefined>(); 
@@ -80,6 +81,16 @@ function DiffTableContent() {
     if (!diffData.length) return undefined;
     return diffData[0].prev_commit_details;
   }, [diffData]);
+  
+  // Get unique Python versions from commits
+  const availablePythonVersions = useMemo(() => {
+    const versions = new Set<string>();
+    commits.forEach(commit => {
+      const version = `${commit.python_version.major}.${commit.python_version.minor}`;
+      versions.add(version);
+    });
+    return Array.from(versions).sort((a, b) => b.localeCompare(a)); // Sort descending
+  }, [commits]);
 
   // Load initial data
   useEffect(() => {
@@ -161,7 +172,7 @@ function DiffTableContent() {
     updateAvailableEnvironments();
   }, [selectedBinaryId, environments, selectedEnvironmentId]);
 
-  // Update available commits when binary and environment are selected
+  // Update available commits when binary, environment, and Python version are selected
   useEffect(() => {
     async function updateAvailableCommits() {
       if (!selectedBinaryId || !selectedEnvironmentId) {
@@ -171,9 +182,18 @@ function DiffTableContent() {
 
       try {
         const commitsForBinaryAndEnv = await api.getCommitsForBinaryAndEnvironment(selectedBinaryId, selectedEnvironmentId);
-        const filteredCommits = commits.filter(commit => 
+        let filteredCommits = commits.filter(commit => 
           commitsForBinaryAndEnv.some(commitData => commitData.sha === commit.sha)
         );
+        
+        // Further filter by Python version if selected
+        if (selectedPythonVersion) {
+          filteredCommits = filteredCommits.filter(commit => {
+            const version = `${commit.python_version.major}.${commit.python_version.minor}`;
+            return version === selectedPythonVersion;
+          });
+        }
+        
         setAvailableCommits(filteredCommits);
         
         // Reset commit selection if current one is not available
@@ -187,7 +207,7 @@ function DiffTableContent() {
     }
 
     updateAvailableCommits();
-  }, [selectedBinaryId, selectedEnvironmentId, commits, selectedCommitSha]);
+  }, [selectedBinaryId, selectedEnvironmentId, selectedPythonVersion, commits, selectedCommitSha]);
 
   // Load diff data when selections change
   useEffect(() => {
@@ -404,11 +424,16 @@ function DiffTableContent() {
               <div className="flex-1 h-px bg-border"></div>
               <div className="flex items-center gap-2">
                 <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${selectedBinaryId && availableEnvironments.length > 0 && selectedEnvironmentId ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>3</div>
+                <span>Filter Version</span>
+              </div>
+              <div className="flex-1 h-px bg-border"></div>
+              <div className="flex items-center gap-2">
+                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${selectedBinaryId && availableEnvironments.length > 0 && selectedEnvironmentId ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>4</div>
                 <span>Select Run</span>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 items-start">
               {/* Step 1: Binary Selection */}
               <div className="space-y-3">
                 <Label htmlFor="filter-binary" className="flex items-center gap-2">
@@ -445,10 +470,33 @@ function DiffTableContent() {
                 </Select>
               </div>
 
-              {/* Step 3: Run Selection */}
+              {/* Step 3: Python Version Filter */}
+              <div className="space-y-3">
+                <Label htmlFor="filter-python-version" className="flex items-center gap-2">
+                  <div className={`w-4 h-4 rounded-full flex items-center justify-center text-xs font-bold ${selectedBinaryId && availableEnvironments.length > 0 && selectedEnvironmentId ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>3</div>
+                  Python Version (Optional)
+                </Label>
+                <Select 
+                  value={selectedPythonVersion || 'all'} 
+                  onValueChange={(value) => setSelectedPythonVersion(value === 'all' ? undefined : value)}
+                  disabled={!selectedBinaryId || availableEnvironments.length === 0 || !selectedEnvironmentId}
+                >
+                  <SelectTrigger id="filter-python-version" className={!selectedBinaryId || availableEnvironments.length === 0 || !selectedEnvironmentId ? 'opacity-50' : ''}>
+                    <SelectValue placeholder={!selectedBinaryId ? "Select binary first" : availableEnvironments.length === 0 ? "No environments available" : !selectedEnvironmentId ? "Select environment first" : "All Versions"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Versions</SelectItem>
+                    {availablePythonVersions.map(version => (
+                      <SelectItem key={version} value={version}>Python {version}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Step 4: Run Selection */}
               <div className="space-y-3">
                 <Label htmlFor="filter-commit" className="flex items-center gap-2">
-                  <div className={`w-4 h-4 rounded-full flex items-center justify-center text-xs font-bold ${selectedBinaryId && availableEnvironments.length > 0 && selectedEnvironmentId ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>3</div>
+                  <div className={`w-4 h-4 rounded-full flex items-center justify-center text-xs font-bold ${selectedBinaryId && availableEnvironments.length > 0 && selectedEnvironmentId ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>4</div>
                   Run
                 </Label>
                 <Select 

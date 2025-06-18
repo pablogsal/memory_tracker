@@ -44,6 +44,7 @@ export default function BenchmarkTrendPage() {
   const [allBenchmarkNames, setAllBenchmarkNames] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [dataProcessing, setDataProcessing] = useState(false);
 
   const [selectedBinaryId, setSelectedBinaryId] = useState<string | undefined>();
   const [selectedEnvironmentId, setSelectedEnvironmentId] = useState<string | undefined>();
@@ -134,6 +135,7 @@ export default function BenchmarkTrendPage() {
       if (!versionOption) return;
 
       try {
+        setDataProcessing(true);
         // Use the optimized endpoint to load data
         const benchmarkResultsData = await api.getFilteredBenchmarkResults({
           environment_id: selectedEnvironmentId,
@@ -155,6 +157,8 @@ export default function BenchmarkTrendPage() {
         }
       } catch (err) {
         console.error('Failed to load benchmark data:', err);
+      } finally {
+        setDataProcessing(false);
       }
     }
 
@@ -552,7 +556,17 @@ export default function BenchmarkTrendPage() {
           </DropdownMenu>
         </CardHeader>
         <CardContent>
-          {chartData.length > 0 && selectedBenchmarks.length > 0 ? (
+          {dataProcessing ? (
+            <div className="flex flex-col items-center justify-center h-96 space-y-4">
+              <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
+              <div className="text-center space-y-2">
+                <p className="text-lg font-medium">Processing data...</p>
+                <p className="text-sm text-muted-foreground">
+                  Loading benchmark results for {binaries.find(b=>b.id === selectedBinaryId)?.name || 'selected binary'}
+                </p>
+              </div>
+            </div>
+          ) : chartData.length > 0 && selectedBenchmarks.length > 0 ? (
             <ResponsiveContainer width="100%" height={400}>
               <LineChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" />
