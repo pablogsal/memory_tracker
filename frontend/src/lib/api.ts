@@ -107,6 +107,19 @@ export const api = {
     method: 'POST',
     body: JSON.stringify(data),
   }),
+
+  // Optimized filtered benchmark results endpoint
+  getFilteredBenchmarkResults: (filters: {
+    environment_id?: string;
+    python_major?: number;
+    python_minor?: number;
+    binary_ids?: string[];
+    benchmark_names?: string[];
+    limit?: number;
+  }) => fetchApi<EnrichedBenchmarkResult[]>('/api/benchmark-results/filtered', {
+    method: 'POST',
+    body: JSON.stringify(filters),
+  }),
 };
 
 export { ApiError }; 

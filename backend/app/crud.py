@@ -407,3 +407,130 @@ async def deactivate_auth_token(db: AsyncSession, token_id: int) -> bool:
         await db.commit()
         return True
     return False
+
+
+async def get_filtered_benchmark_results(
+    db: AsyncSession,
+    environment_id: Optional[str] = None,
+    python_major: Optional[int] = None,
+    python_minor: Optional[int] = None,
+    binary_ids: Optional[List[str]] = None,
+    benchmark_names: Optional[List[str]] = None,
+    limit: int = 5000
+) -> List[Dict[str, Any]]:
+    """
+    Get benchmark results with optimized filtering for specific use cases.
+    This function is optimized for fetching results when filtering by multiple binaries and benchmarks.
+    """
+    # Build the query with all necessary joins upfront
+    query = select(
+        models.BenchmarkResult.id,
+        models.BenchmarkResult.run_id,
+        models.BenchmarkResult.benchmark_name,
+        models.BenchmarkResult.high_watermark_bytes,
+        models.BenchmarkResult.allocation_histogram,
+        models.BenchmarkResult.total_allocated_bytes,
+        models.BenchmarkResult.top_allocating_functions,
+        models.Run.commit_sha,
+        models.Run.binary_id,
+        models.Run.environment_id,
+        models.Run.python_major.label("run_python_major"),
+        models.Run.python_minor.label("run_python_minor"),
+        models.Run.python_patch.label("run_python_patch"),
+        models.Run.timestamp.label("run_timestamp"),
+        models.Commit.sha.label("commit_sha"),
+        models.Commit.timestamp.label("commit_timestamp"),
+        models.Commit.message.label("commit_message"),
+        models.Commit.author.label("commit_author"),
+        models.Commit.python_major.label("commit_python_major"),
+        models.Commit.python_minor.label("commit_python_minor"),
+        models.Commit.python_patch.label("commit_python_patch"),
+        models.Binary.id.label("binary_id"),
+        models.Binary.name.label("binary_name"),
+        models.Binary.flags.label("binary_flags"),
+        models.Binary.description.label("binary_description"),
+        models.Environment.id.label("environment_id"),
+        models.Environment.name.label("environment_name"),
+        models.Environment.description.label("environment_description")
+    ).select_from(models.BenchmarkResult).join(
+        models.Run, models.BenchmarkResult.run_id == models.Run.run_id
+    ).join(
+        models.Commit, models.Run.commit_sha == models.Commit.sha
+    ).join(
+        models.Binary, models.Run.binary_id == models.Binary.id
+    ).join(
+        models.Environment, models.Run.environment_id == models.Environment.id
+    )
+    
+    # Apply filters
+    filters = []
+    
+    if environment_id:
+        filters.append(models.Run.environment_id == environment_id)
+    
+    if python_major is not None:
+        filters.append(models.Commit.python_major == python_major)
+    
+    if python_minor is not None:
+        filters.append(models.Commit.python_minor == python_minor)
+    
+    if binary_ids:
+        filters.append(models.Run.binary_id.in_(binary_ids))
+    
+    if benchmark_names:
+        filters.append(models.BenchmarkResult.benchmark_name.in_(benchmark_names))
+    
+    if filters:
+        query = query.where(and_(*filters))
+    
+    # Order by commit timestamp descending for consistent ordering
+    query = query.order_by(desc(models.Commit.timestamp)).limit(limit)
+    
+    # Execute query
+    result = await db.execute(query)
+    rows = result.fetchall()
+    
+    # Transform rows into the expected format
+    results = []
+    for row in rows:
+        results.append({
+            "id": row.id,
+            "run_id": row.run_id,
+            "benchmark_name": row.benchmark_name,
+            "result_json": {
+                "high_watermark_bytes": row.high_watermark_bytes,
+                "allocation_histogram": row.allocation_histogram,
+                "total_allocated_bytes": row.total_allocated_bytes,
+                "top_allocating_functions": row.top_allocating_functions,
+                "benchmark_name": row.benchmark_name
+            },
+            "commit": {
+                "sha": row.commit_sha,
+                "timestamp": row.commit_timestamp,
+                "message": row.commit_message,
+                "author": row.commit_author,
+                "python_version": {
+                    "major": row.commit_python_major,
+                    "minor": row.commit_python_minor,
+                    "patch": row.commit_python_patch
+                }
+            },
+            "binary": {
+                "id": row.binary_id,
+                "name": row.binary_name,
+                "flags": row.binary_flags,
+                "description": row.binary_description
+            },
+            "environment": {
+                "id": row.environment_id,
+                "name": row.environment_name,
+                "description": row.environment_description
+            },
+            "run_python_version": {
+                "major": row.run_python_major,
+                "minor": row.run_python_minor,
+                "patch": row.run_python_patch
+            }
+        })
+    
+    return results

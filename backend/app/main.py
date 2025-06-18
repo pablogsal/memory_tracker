@@ -660,6 +660,64 @@ async def get_flamegraph(result_id: str, db: AsyncSession = Depends(get_database
     }
 
 
+# Optimized filtered benchmark results endpoint
+@app.post("/api/benchmark-results/filtered", response_model=List[schemas.EnrichedBenchmarkResult])
+async def get_filtered_benchmark_results(
+    filters: dict,
+    db: AsyncSession = Depends(get_database)
+):
+    """
+    Get benchmark results with optimized filtering for build comparison and trends.
+    Accepts a JSON body with filters:
+    {
+        "environment_id": str,
+        "python_major": int,
+        "python_minor": int,
+        "binary_ids": List[str],
+        "benchmark_names": List[str],
+        "limit": int (optional, default 5000)
+    }
+    """
+    logger = logging.getLogger(__name__)
+    
+    environment_id = filters.get("environment_id")
+    python_major = filters.get("python_major")
+    python_minor = filters.get("python_minor")
+    binary_ids = filters.get("binary_ids", [])
+    benchmark_names = filters.get("benchmark_names", [])
+    limit = filters.get("limit", 5000)
+    
+    logger.info(f"Fetching filtered benchmark results: env={environment_id}, "
+                f"python={python_major}.{python_minor}, "
+                f"binaries={len(binary_ids)}, benchmarks={len(benchmark_names)}")
+    
+    results = await crud.get_filtered_benchmark_results(
+        db,
+        environment_id=environment_id,
+        python_major=python_major,
+        python_minor=python_minor,
+        binary_ids=binary_ids,
+        benchmark_names=benchmark_names,
+        limit=limit
+    )
+    
+    logger.info(f"Found {len(results)} filtered benchmark results")
+    
+    return [
+        schemas.EnrichedBenchmarkResult(
+            id=result["id"],
+            run_id=result["run_id"],
+            benchmark_name=result["benchmark_name"],
+            result_json=schemas.BenchmarkResultJson(**result["result_json"]),
+            commit=schemas.Commit(**result["commit"]),
+            binary=schemas.Binary(**result["binary"]),
+            environment=schemas.Environment(**result["environment"]),
+            run_python_version=schemas.PythonVersion(**result["run_python_version"])
+        )
+        for result in results
+    ]
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)

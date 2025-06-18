@@ -55,28 +55,22 @@ export default function BenchmarkTrendPage() {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
-  // Load initial data
+  // Load initial data (metadata only)
   useEffect(() => {
-    async function loadData() {
+    async function loadInitialData() {
       try {
         setLoading(true);
         setError(null);
         
-        const [binariesData, environmentsData, pythonVersionsData, benchmarkResultsData] = await Promise.all([
+        const [binariesData, environmentsData, pythonVersionsData] = await Promise.all([
           api.getBinaries(),
           api.getEnvironments(),
-          api.getPythonVersions(),
-          api.getBenchmarkResults({ limit: 10000 })
+          api.getPythonVersions()
         ]);
         
         setBinaries(binariesData);
         setEnvironments(environmentsData);
         setPythonVersionOptions(pythonVersionsData);
-        setBenchmarkResults(benchmarkResultsData);
-        
-        // Extract unique benchmark names
-        const uniqueBenchmarks = Array.from(new Set(benchmarkResultsData.map(r => r.benchmark_name)));
-        setAllBenchmarkNames(uniqueBenchmarks);
         
         // Set initial selections
         if (binariesData.length > 0 && !selectedBinaryId) {
@@ -88,9 +82,6 @@ export default function BenchmarkTrendPage() {
         if (pythonVersionsData.length > 0 && !selectedPythonVersionKey) {
           setSelectedPythonVersionKey(pythonVersionsData[0].label);
         }
-        if (uniqueBenchmarks.length > 0 && selectedBenchmarks.length === 0) {
-          setSelectedBenchmarks([uniqueBenchmarks[0]]);
-        }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load data');
       } finally {
@@ -99,7 +90,7 @@ export default function BenchmarkTrendPage() {
     }
     
     if (mounted) {
-      loadData();
+      loadInitialData();
     }
   }, [mounted]);
 
@@ -131,6 +122,46 @@ export default function BenchmarkTrendPage() {
 
     updateAvailableEnvironments();
   }, [selectedBinaryId, environments, selectedEnvironmentId]);
+
+  // Load benchmark data when filters change
+  useEffect(() => {
+    async function loadBenchmarkData() {
+      if (!selectedBinaryId || !selectedEnvironmentId || !selectedPythonVersionKey) {
+        return;
+      }
+
+      const versionOption = pythonVersionOptions.find(v => v.label === selectedPythonVersionKey);
+      if (!versionOption) return;
+
+      try {
+        // Use the optimized endpoint to load data
+        const benchmarkResultsData = await api.getFilteredBenchmarkResults({
+          environment_id: selectedEnvironmentId,
+          python_major: versionOption.major,
+          python_minor: versionOption.minor,
+          binary_ids: [selectedBinaryId],
+          limit: 5000
+        });
+        
+        setBenchmarkResults(benchmarkResultsData);
+        
+        // Extract unique benchmark names
+        const uniqueBenchmarks = Array.from(new Set(benchmarkResultsData.map(r => r.benchmark_name)));
+        setAllBenchmarkNames(uniqueBenchmarks);
+        
+        // Set initial benchmark selection if empty
+        if (uniqueBenchmarks.length > 0 && selectedBenchmarks.length === 0) {
+          setSelectedBenchmarks([uniqueBenchmarks[0]]);
+        }
+      } catch (err) {
+        console.error('Failed to load benchmark data:', err);
+      }
+    }
+
+    if (!loading && mounted && availableEnvironments.length > 0) {
+      loadBenchmarkData();
+    }
+  }, [selectedBinaryId, selectedEnvironmentId, selectedPythonVersionKey, pythonVersionOptions, loading, mounted, availableEnvironments]);
 
   // Ensure initial benchmark selection after data loads
   useEffect(() => {
