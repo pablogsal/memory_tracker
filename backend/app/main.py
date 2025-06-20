@@ -22,7 +22,12 @@ app = FastAPI(title="CPython Memory Tracker API", version="1.0.0")
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:9002", "http://127.0.0.1:9002"],  # Frontend URLs
+    allow_origins=[
+        "http://localhost:3000", 
+        "http://127.0.0.1:3000", 
+        "http://localhost:9002", 
+        "http://127.0.0.1:9002",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
