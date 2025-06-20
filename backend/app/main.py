@@ -6,42 +6,79 @@ from typing import List, Optional, Annotated
 from datetime import datetime
 import uuid
 import logging
+import json
 
-from . import crud, models, schemas
+from . import models, schemas
 from .database import get_database, create_tables
+from .config import get_settings, Constants
+from . import crud_optimized as crud
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
-)
+settings = get_settings()
 
-app = FastAPI(title="CPython Memory Tracker API", version="1.0.0")
+# Configure logging based on settings
+if settings.log_format == "json":
+    # JSON logging for production
+    logging.basicConfig(
+        level=getattr(logging, settings.log_level.upper()),
+        handlers=[
+            logging.StreamHandler()
+        ]
+    )
+    # Configure JSON formatter
+    for handler in logging.root.handlers:
+        handler.setFormatter(
+            logging.Formatter(
+                json.dumps({
+                    "timestamp": "%(asctime)s",
+                    "level": "%(levelname)s",
+                    "logger": "%(name)s",
+                    "message": "%(message)s"
+                })
+            )
+        )
+else:
+    # Plain text logging for development
+    logging.basicConfig(
+        level=getattr(logging, settings.log_level.upper()),
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+
+app = FastAPI(title=settings.api_title, version=settings.api_version)
 
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000", 
-        "http://127.0.0.1:3000", 
-        "http://localhost:9002", 
-        "http://127.0.0.1:9002",
-    ],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=settings.cors_origins,
+    allow_credentials=settings.cors_allow_credentials,
+    allow_methods=settings.cors_allow_methods,
+    allow_headers=settings.cors_allow_headers,
 )
 
-# Add request logging middleware
+# Add request logging middleware with request ID tracking
 @app.middleware("http")
 async def log_requests(request, call_next):
     logger = logging.getLogger("api")
     start_time = datetime.now()
     
+    # Generate request ID if enabled
+    request_id = None
+    if settings.enable_request_id_tracking:
+        request_id = str(uuid.uuid4())
+        request.state.request_id = request_id
+    
     # Log the incoming request
-    logger.info(f"→ {request.method} {request.url.path}")
-    if request.query_params:
+    if settings.log_format == "json":
+        logger.info(json.dumps({
+            "event": "request_start",
+            "request_id": request_id,
+            "method": request.method,
+            "path": str(request.url.path),
+            "query_params": dict(request.query_params) if request.query_params else None
+        }))
+    else:
+        logger.info(f"→ [{request_id}] {request.method} {request.url.path}")
+    if request.query_params and settings.log_format != "json":
         logger.info(f"  Query params: {dict(request.query_params)}")
     
     # Process the request
@@ -49,7 +86,21 @@ async def log_requests(request, call_next):
     
     # Log the response
     process_time = (datetime.now() - start_time).total_seconds()
-    logger.info(f"← {response.status_code} {request.method} {request.url.path} ({process_time:.3f}s)")
+    if settings.log_format == "json":
+        logger.info(json.dumps({
+            "event": "request_complete",
+            "request_id": request_id,
+            "method": request.method,
+            "path": str(request.url.path),
+            "status_code": response.status_code,
+            "duration_seconds": process_time
+        }))
+    else:
+        logger.info(f"← [{request_id}] {response.status_code} {request.method} {request.url.path} ({process_time:.3f}s)")
+    
+    # Add request ID to response headers if enabled
+    if settings.enable_request_id_tracking and request_id:
+        response.headers["X-Request-ID"] = request_id
     
     return response
 
@@ -61,9 +112,22 @@ async def startup_event():
 
 # Health check endpoint
 @app.get("/health")
-async def health_check():
+async def health_check(db: AsyncSession = Depends(get_database)):
     """Health check endpoint for Docker health checks."""
-    return {"status": "healthy", "timestamp": datetime.now().isoformat()}
+    health_status = {"status": "healthy", "timestamp": datetime.now().isoformat()}
+    
+    # Check database connectivity if enabled
+    if settings.enable_health_check_db:
+        try:
+            # Simple query to verify database connection
+            await db.execute("SELECT 1")
+            health_status["database"] = "healthy"
+        except Exception as e:
+            health_status["status"] = "unhealthy"
+            health_status["database"] = "unhealthy"
+            health_status["error"] = str(e)
+            
+    return health_status
 
 
 # Authentication
@@ -118,7 +182,7 @@ async def get_current_token(
 @app.get("/api/commits", response_model=List[schemas.Commit])
 async def get_commits(
     skip: int = 0, 
-    limit: int = 100, 
+    limit: int = settings.default_page_size, 
     db: AsyncSession = Depends(get_database)
 ):
     logger = logging.getLogger(__name__)
@@ -244,7 +308,7 @@ async def get_runs(
     binary_id: Optional[str] = None,
     environment_id: Optional[str] = None,
     skip: int = 0,
-    limit: int = 100,
+    limit: int = settings.default_page_size,
     db: AsyncSession = Depends(get_database)
 ):
     runs = await crud.get_runs(db, commit_sha=commit_sha, binary_id=binary_id, environment_id=environment_id, skip=skip, limit=limit)
@@ -274,7 +338,7 @@ async def get_benchmark_results(
     python_major: Optional[int] = None,
     python_minor: Optional[int] = None,
     skip: int = 0,
-    limit: int = 10000,
+    limit: int = settings.benchmark_results_max_limit,
     db: AsyncSession = Depends(get_database)
 ):
     logger = logging.getLogger(__name__)
@@ -323,7 +387,7 @@ async def get_diff_table(
     commit_sha: str,
     binary_id: str,
     environment_id: str,
-    metric_key: str = "high_watermark_bytes",
+    metric_key: str = Constants.DEFAULT_METRIC_KEY,
     db: AsyncSession = Depends(get_database)
 ):
     # Get the selected commit
@@ -341,6 +405,15 @@ async def get_diff_table(
     
     # Efficiently find the previous commit that was tested with the same binary and environment
     prev_commit = await crud.get_previous_commit_with_binary_and_environment(db, selected_commit, binary_id, environment_id)
+    
+    # Pre-fetch all previous results to avoid N+1 queries
+    prev_results_map = {}
+    if prev_commit:
+        prev_runs = await crud.get_runs(db, commit_sha=prev_commit.sha, binary_id=binary_id, environment_id=environment_id)
+        if prev_runs:
+            prev_results = await crud.get_benchmark_results(db, run_id=prev_runs[0].run_id)
+            # Create a map for O(1) lookup
+            prev_results_map = {r.benchmark_name: r for r in prev_results}
     
     rows = []
     for result in current_results:
@@ -366,14 +439,9 @@ async def get_diff_table(
         }
         
         # Try to find previous commit's data for comparison
-        if prev_commit:
-            
-            prev_runs = await crud.get_runs(db, commit_sha=prev_commit.sha, binary_id=binary_id, environment_id=environment_id)
-            if prev_runs:
-                prev_results = await crud.get_benchmark_results(db, run_id=prev_runs[0].run_id)
-                prev_result = next((r for r in prev_results if r.benchmark_name == result.benchmark_name), None)
-                
-                if prev_result:
+        if prev_commit and result.benchmark_name in prev_results_map:
+            prev_result = prev_results_map[result.benchmark_name]
+            if prev_result:
                     prev_metric_value = getattr(prev_result, metric_key, 0)
                     row_data.update({
                         "prev_metric_value": prev_metric_value,
@@ -725,4 +793,4 @@ async def get_filtered_benchmark_results(
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host=settings.api_host, port=settings.api_port)

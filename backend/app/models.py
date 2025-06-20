@@ -70,6 +70,8 @@ class Run(Base):
         Index('idx_runs_python_version', 'python_major', 'python_minor', 'python_patch'),
         Index('idx_runs_binary_env_timestamp', 'binary_id', 'environment_id', 'timestamp'),  # For efficient previous commit with binary+env lookup
         Index('idx_runs_env_timestamp', 'environment_id', 'timestamp'),  # For environment-based queries
+        Index('idx_runs_timestamp_desc', 'timestamp', postgresql_using='btree', mysql_length={'timestamp': 255}),  # For ORDER BY timestamp DESC
+        Index('idx_runs_env_python_timestamp', 'environment_id', 'python_major', 'python_minor', 'timestamp'),  # For filtered queries
     )
 
 
@@ -90,6 +92,8 @@ class BenchmarkResult(Base):
     __table_args__ = (
         Index('idx_benchmark_results_run_benchmark', 'run_id', 'benchmark_name'),
         Index('idx_benchmark_results_benchmark_name', 'benchmark_name'),
+        Index('idx_benchmark_results_name_run', 'benchmark_name', 'run_id'),  # For efficient lookups by name then run
+        Index('idx_benchmark_results_run_high_watermark', 'run_id', 'high_watermark_bytes'),  # For sorted queries
     )
 
 

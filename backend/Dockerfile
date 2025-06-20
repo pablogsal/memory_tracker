@@ -21,12 +21,16 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the backend source code
 COPY . .
 
-# Expose the port
-EXPOSE 8000
+# Set default environment variables
+ENV API_PORT=8000
+ENV API_HOST=0.0.0.0
+
+# Expose the port (using environment variable)
+EXPOSE ${API_PORT}
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
+    CMD curl -f http://localhost:${API_PORT}/health || exit 1
 
 # Run the application
-CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["sh", "-c", "python -m uvicorn app.main:app --host ${API_HOST} --port ${API_PORT}"]

@@ -6,7 +6,9 @@
       "Bash(uv pip install:*)",
       "Bash(python:*)",
       "Bash(make:*)",
-      "Bash(mkdir:*)"
+      "Bash(mkdir:*)",
+      "Bash(npm run lint)",
+      "Bash(rg:*)"
     ],
     "deny": []
   }

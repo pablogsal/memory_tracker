@@ -120,6 +120,9 @@ export const api = {
     method: 'POST',
     body: JSON.stringify(filters),
   }),
+
+  // Flamegraph endpoint
+  getFlamegraph: (id: string) => fetchApi<{ flamegraph_html: string }>(`/api/flamegraph/${id}`),
 };
 
 export { ApiError }; 

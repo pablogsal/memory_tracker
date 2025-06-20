@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft, Loader2 } from 'lucide-react';
+import { api } from '@/lib/api';
 
 interface FlamegraphPageProps {
   params: Promise<{ id: string }>;
@@ -21,13 +22,7 @@ export default function FlamegraphPage({ params }: FlamegraphPageProps) {
     const fetchFlamegraph = async () => {
       try {
         setLoading(true);
-        const response = await fetch(`http://localhost:8000/api/flamegraph/${resolvedParams.id}`);
-        
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        
-        const data = await response.json();
+        const data = await api.getFlamegraph(resolvedParams.id);
         setFlamegraphHtml(data.flamegraph_html || '');
       } catch (err) {
         console.error('Error fetching flamegraph:', err);
