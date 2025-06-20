@@ -145,8 +145,6 @@ def create_temp_repo_copy(source_repo_path: Path, commit_sha: str) -> Path:
     temp_dir = Path(tempfile.mkdtemp(prefix=f'cpython_copy_{commit_sha[:8]}_'))
     
     try:
-        # Use git worktree to create a clean copy at the specific commit
-        # This is more efficient than full copies and avoids .git directory
         source_repo = git.Repo(source_repo_path)
         
         # Create a temporary worktree
@@ -208,7 +206,6 @@ def process_commit_with_temp_repo(
         temp_repo_path = create_temp_repo_copy(source_repo_path, commit_sha)
         
         # Create a fake commit object for compatibility with existing code
-        # We need to get the actual commit object to preserve all attributes
         source_repo = git.Repo(source_repo_path)
         actual_commit = source_repo.commit(commit_sha)
         

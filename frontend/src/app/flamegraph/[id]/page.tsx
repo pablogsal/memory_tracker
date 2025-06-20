@@ -26,7 +26,9 @@ export default function FlamegraphPage({ params }: FlamegraphPageProps) {
         setFlamegraphHtml(data.flamegraph_html || '');
       } catch (err) {
         console.error('Error fetching flamegraph:', err);
-        setError(err instanceof Error ? err.message : 'Failed to load flamegraph');
+        setError(
+          err instanceof Error ? err.message : 'Failed to load flamegraph'
+        );
       } finally {
         setLoading(false);
       }
@@ -64,7 +66,8 @@ export default function FlamegraphPage({ params }: FlamegraphPageProps) {
           <CardContent>
             <p className="text-red-600">{error}</p>
             <p className="text-sm text-gray-600 mt-2">
-              The flamegraph could not be loaded. Please check if the benchmark result exists and contains flamegraph data.
+              The flamegraph could not be loaded. Please check if the benchmark
+              result exists and contains flamegraph data.
             </p>
           </CardContent>
         </Card>
@@ -86,7 +89,9 @@ export default function FlamegraphPage({ params }: FlamegraphPageProps) {
             </div>
           </CardHeader>
           <CardContent>
-            <p className="text-gray-600">No flamegraph data is available for this benchmark result.</p>
+            <p className="text-gray-600">
+              No flamegraph data is available for this benchmark result.
+            </p>
           </CardContent>
         </Card>
       </div>
@@ -101,12 +106,13 @@ export default function FlamegraphPage({ params }: FlamegraphPageProps) {
           Back to Results
         </Button>
       </div>
-      
+
       <Card>
         <CardHeader>
           <CardTitle>Memory Flamegraph</CardTitle>
           <p className="text-sm text-gray-600">
-            Interactive flamegraph showing memory allocation patterns. Click on sections to zoom in.
+            Interactive flamegraph showing memory allocation patterns. Click on
+            sections to zoom in.
           </p>
         </CardHeader>
         <CardContent className="p-0">

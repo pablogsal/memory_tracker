@@ -53,17 +53,6 @@ export type BenchmarkResultJson = {
   benchmark_name?: string;
 };
 
-export type EnrichedBenchmarkResult = {
-  id: string;
-  run_id: string;
-  benchmark_name: string;
-  result_json: BenchmarkResultJson;
-  commit: Commit;
-  binary: Binary;
-  environment: Environment;
-  run_python_version: PythonVersion;
-};
-
 export type DiffTableRow = {
   benchmark_name: string;
   metric_delta_percent?: number;
@@ -75,4 +64,4 @@ export type DiffTableRow = {
   prev_python_version_str?: string;
   curr_python_version_str: string;
   curr_result_id: string;
-}; 
+};

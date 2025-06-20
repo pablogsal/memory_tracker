@@ -11,9 +11,11 @@ engine = create_async_engine(
     pool_size=settings.database_pool_size,
     max_overflow=settings.database_max_overflow,
     pool_pre_ping=settings.database_pool_pre_ping,
-    pool_recycle=settings.database_pool_recycle
+    pool_recycle=settings.database_pool_recycle,
 )
-AsyncSessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+AsyncSessionLocal = async_sessionmaker(
+    engine, class_=AsyncSession, expire_on_commit=False
+)
 
 
 async def get_database():

@@ -1,7 +1,15 @@
-"use client";
+'use client';
 
 import Link from 'next/link';
-import { Code2, LineChart, GitCompareArrows, ListChecks, Sun, Moon, GitCompare } from 'lucide-react'; // Removed UploadCloud
+import {
+  Code2,
+  LineChart,
+  GitCompareArrows,
+  ListChecks,
+  Sun,
+  Moon,
+  GitCompare,
+} from 'lucide-react'; // Removed UploadCloud
 import { useTheme } from 'next-themes';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
@@ -28,22 +36,25 @@ export default function Header() {
   };
 
   if (!mounted) {
-    return ( 
+    return (
       <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="container flex h-16 items-center justify-between">
-          <Link href="/" className="flex items-center gap-2 text-lg font-headline font-bold">
+          <Link
+            href="/"
+            className="flex items-center gap-2 text-lg font-headline font-bold"
+          >
             <Code2 className="h-7 w-7 text-primary" />
             <span>CPython Memory Insights</span>
           </Link>
           <div className="flex items-center gap-2">
-             <div className="h-8 w-8 rounded-full bg-muted animate-pulse" />
+            <div className="h-8 w-8 rounded-full bg-muted animate-pulse" />
           </div>
         </div>
       </header>
     );
   }
 
-  const NavLinks = ({ inSheet = false }: { inSheet?: boolean }) => (
+  const NavLinks = ({ inSheet = false }: { inSheet?: boolean }) =>
     navItems.map((item) => (
       <Button
         key={item.label}
@@ -57,13 +68,15 @@ export default function Header() {
           {item.label}
         </Link>
       </Button>
-    ))
-  );
-  
+    ));
+
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container flex h-16 items-center justify-between">
-        <Link href="/" className="flex items-center gap-2 text-lg font-headline font-bold">
+        <Link
+          href="/"
+          className="flex items-center gap-2 text-lg font-headline font-bold"
+        >
           <Code2 className="h-7 w-7 text-primary" />
           <span>CPython Memory Insights</span>
         </Link>
@@ -73,8 +86,17 @@ export default function Header() {
         </nav>
 
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="icon" onClick={toggleTheme} aria-label="Toggle theme">
-            {theme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={toggleTheme}
+            aria-label="Toggle theme"
+          >
+            {theme === 'dark' ? (
+              <Sun className="h-5 w-5" />
+            ) : (
+              <Moon className="h-5 w-5" />
+            )}
           </Button>
           <div className="md:hidden">
             <Sheet open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
@@ -85,10 +107,14 @@ export default function Header() {
               </SheetTrigger>
               <SheetContent side="right" className="w-[300px] sm:w-[400px]">
                 <div className="p-4">
-                <Link href="/" className="flex items-center gap-2 text-lg font-headline font-bold mb-6" onClick={() => setIsMobileMenuOpen(false)}>
-                  <Code2 className="h-7 w-7 text-primary" />
-                  <span>CPython Memory Insights</span>
-                </Link>
+                  <Link
+                    href="/"
+                    className="flex items-center gap-2 text-lg font-headline font-bold mb-6"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                  >
+                    <Code2 className="h-7 w-7 text-primary" />
+                    <span>CPython Memory Insights</span>
+                  </Link>
                   <nav className="flex flex-col gap-2">
                     <NavLinks inSheet={true} />
                   </nav>

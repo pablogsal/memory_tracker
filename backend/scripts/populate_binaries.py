@@ -9,7 +9,7 @@ import sys
 import os
 
 # Add the parent directory to the path so we can import from app
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from app import schemas, crud, models
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
@@ -18,10 +18,14 @@ from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, Asyn
 def create_database_session(database_url: str = None):
     """Create database connection from URL."""
     if not database_url:
-        database_url = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./memory_tracker.db")
-    
+        database_url = os.getenv(
+            "DATABASE_URL", "sqlite+aiosqlite:///./memory_tracker.db"
+        )
+
     engine = create_async_engine(database_url, echo=False)
-    async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    async_session = async_sessionmaker(
+        engine, class_=AsyncSession, expire_on_commit=False
+    )
     return engine, async_session
 
 
@@ -38,75 +42,75 @@ def get_standard_binaries():
             "id": "default",
             "name": "Default Build",
             "flags": [],
-            "description": "Standard CPython build with default compilation settings. Used as baseline for performance comparisons."
+            "description": "Standard CPython build with default compilation settings. Used as baseline for performance comparisons.",
         },
         {
             "id": "debug",
-            "name": "Debug Build", 
+            "name": "Debug Build",
             "flags": ["--with-debug"],
-            "description": "Debug build with additional runtime checks and debugging symbols. Higher memory usage but better error detection."
+            "description": "Debug build with additional runtime checks and debugging symbols. Higher memory usage but better error detection.",
         },
         {
             "id": "nogil",
             "name": "No GIL Build",
             "flags": ["--disable-gil"],
-            "description": "Experimental build without the Global Interpreter Lock (GIL). Enables true parallelism for CPU-bound tasks."
+            "description": "Experimental build without the Global Interpreter Lock (GIL). Enables true parallelism for CPU-bound tasks.",
         },
         {
             "id": "debug-nogil",
             "name": "Debug No GIL Build",
             "flags": ["--with-debug", "--disable-gil"],
-            "description": "Debug build combined with no-GIL features. Best for development and testing of parallel applications."
+            "description": "Debug build combined with no-GIL features. Best for development and testing of parallel applications.",
         },
         {
             "id": "lto",
             "name": "LTO Build",
             "flags": ["--with-lto"],
-            "description": "Link Time Optimization enabled. Performs cross-module optimizations for better performance."
+            "description": "Link Time Optimization enabled. Performs cross-module optimizations for better performance.",
         },
         {
             "id": "pgo",
             "name": "PGO Build",
             "flags": ["--enable-optimizations"],
-            "description": "Profile Guided Optimization build. Uses runtime profiling data to optimize frequently executed code paths."
+            "description": "Profile Guided Optimization build. Uses runtime profiling data to optimize frequently executed code paths.",
         },
         {
             "id": "trace",
             "name": "Trace Build",
             "flags": ["--with-trace-refs"],
-            "description": "Build with trace reference counting enabled. Useful for memory leak detection and debugging."
+            "description": "Build with trace reference counting enabled. Useful for memory leak detection and debugging.",
         },
         {
             "id": "lto-pgo",
             "name": "LTO + PGO Build",
             "flags": ["--with-lto", "--enable-optimizations"],
-            "description": "Highly optimized build combining Link Time Optimization with Profile Guided Optimization. Maximum performance with cross-module optimizations and runtime profiling data."
-        }
+            "description": "Highly optimized build combining Link Time Optimization with Profile Guided Optimization. Maximum performance with cross-module optimizations and runtime profiling data.",
+        },
     ]
 
 
 async def populate_binaries(force: bool = False, database_url: str = None):
     """Populate the database with standard binary configurations."""
     engine, AsyncSessionLocal = create_database_session(database_url)
-    
+
     # Ensure database tables exist
     await create_tables_for_engine(engine)
-    
+
     async with AsyncSessionLocal() as db:
         try:
             binaries_data = get_standard_binaries()
             created_count = 0
             updated_count = 0
             skipped_count = 0
-            
+
             print(f"Populating {len(binaries_data)} standard binary configurations...")
-            
+
             for binary_data in binaries_data:
                 binary_id = binary_data["id"]
-                
+
                 # Check if binary already exists
                 existing_binary = await crud.get_binary_by_id(db, binary_id=binary_id)
-                
+
                 if existing_binary:
                     if force:
                         # Update existing binary
@@ -119,8 +123,12 @@ async def populate_binaries(force: bool = False, database_url: str = None):
                         print(f"   Description: {binary_data['description']}")
                         updated_count += 1
                     else:
-                        print(f"⚠️  Binary '{binary_id}' already exists (use --force to update)")
-                        print(f"   Current: {existing_binary.name} with flags {existing_binary.flags}")
+                        print(
+                            f"⚠️  Binary '{binary_id}' already exists (use --force to update)"
+                        )
+                        print(
+                            f"   Current: {existing_binary.name} with flags {existing_binary.flags}"
+                        )
                         skipped_count += 1
                 else:
                     # Create new binary
@@ -128,22 +136,22 @@ async def populate_binaries(force: bool = False, database_url: str = None):
                         id=binary_id,
                         name=binary_data["name"],
                         flags=binary_data["flags"],
-                        description=binary_data["description"]
+                        description=binary_data["description"],
                     )
-                    
+
                     new_binary = await crud.create_binary(db, binary_create)
                     print(f"✅ Created binary '{binary_id}': {binary_data['name']}")
                     print(f"   Flags: {binary_data['flags']}")
                     print(f"   Description: {binary_data['description']}")
                     created_count += 1
-            
+
             print(f"\n🎉 Binary population completed!")
             print(f"   - Created: {created_count} binaries")
             print(f"   - Updated: {updated_count} binaries")
             print(f"   - Skipped: {skipped_count} binaries")
-            
+
             return True
-            
+
         except Exception as e:
             print(f"❌ Error populating binaries: {e}")
             await db.rollback()
@@ -154,27 +162,27 @@ async def list_binaries(database_url: str = None):
     """List all currently registered binaries."""
     engine, AsyncSessionLocal = create_database_session(database_url)
     await create_tables_for_engine(engine)
-    
+
     async with AsyncSessionLocal() as db:
         try:
             binaries = await crud.get_binaries(db)
-            
+
             if not binaries:
                 print("No binaries currently registered.")
                 return
-            
+
             print("Currently registered binaries:")
             for binary in binaries:
                 flags_str = " ".join(binary.flags) if binary.flags else "none"
                 print(f"  - {binary.id}: {binary.name} (flags: {flags_str})")
-                
+
         except Exception as e:
             print(f"❌ Error listing binaries: {e}")
 
 
 def main():
     import argparse
-    
+
     parser = argparse.ArgumentParser(
         description="Populate database with standard binary configurations",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -199,31 +207,36 @@ Examples:
   
   # List current binaries
   python populate_binaries.py --list
-"""
+""",
     )
-    
+
     parser.add_argument(
-        '--force', '-f',
-        action='store_true',
-        help='Force update existing binaries with new configurations'
-    )
-    parser.add_argument(
-        '--list', '-l',
-        action='store_true',
-        help='List all currently registered binaries'
+        "--force",
+        "-f",
+        action="store_true",
+        help="Force update existing binaries with new configurations",
     )
     parser.add_argument(
-        '--database-url', '--db-url',
-        help='Database URL (default: sqlite+aiosqlite:///./memory_tracker.db or DATABASE_URL env var)',
-        default=None
+        "--list",
+        "-l",
+        action="store_true",
+        help="List all currently registered binaries",
     )
-    
+    parser.add_argument(
+        "--database-url",
+        "--db-url",
+        help="Database URL (default: sqlite+aiosqlite:///./memory_tracker.db or DATABASE_URL env var)",
+        default=None,
+    )
+
     args = parser.parse_args()
-    
+
     if args.list:
         success = asyncio.run(list_binaries(args.database_url))
     else:
-        success = asyncio.run(populate_binaries(force=args.force, database_url=args.database_url))
+        success = asyncio.run(
+            populate_binaries(force=args.force, database_url=args.database_url)
+        )
         if not success:
             sys.exit(1)
 

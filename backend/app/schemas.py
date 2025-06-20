@@ -29,8 +29,12 @@ class Commit(CommitBase):
 class BinaryBase(BaseModel):
     id: str
     name: str
-    flags: List[str]  # Configure flags used to build Python (e.g., --enable-optimizations, --with-debug)
-    description: Optional[str] = None  # Description of what this binary configuration does
+    flags: List[
+        str
+    ]  # Configure flags used to build Python (e.g., --enable-optimizations, --with-debug)
+    description: Optional[str] = (
+        None  # Description of what this binary configuration does
+    )
 
 
 class BinaryCreate(BinaryBase):
@@ -108,18 +112,12 @@ class BenchmarkResult(BenchmarkResultBase):
         from_attributes = True
 
 
-class EnrichedBenchmarkResult(BenchmarkResult):
-    commit: Commit
-    binary: Binary
-    environment: Environment
-    run_python_version: PythonVersion
-
-
 # Worker upload schemas
 class WorkerBenchmarkResult(BaseModel):
     benchmark_name: str
     stats_json: Dict[str, Any]  # The memray stats JSON
     flamegraph_html: str  # The HTML content
+
 
 class WorkerRunUpload(BaseModel):
     metadata: Dict[str, Any]  # The metadata.json content
@@ -145,6 +143,21 @@ class PythonVersionFilterOption(BaseModel):
     label: str
     major: int
     minor: int
+
+
+class TrendRequest(BaseModel):
+    benchmark_name: str
+    binary_id: str
+    environment_id: str
+    limit: int = 50
+
+
+class BatchTrendRequest(BaseModel):
+    trend_queries: List[TrendRequest]
+
+
+class BatchTrendResponse(BaseModel):
+    results: Dict[str, List[dict]]  # Key format: "{binary_id}:{benchmark_name}"
 
 
 class BenchmarkUpload(BaseModel):

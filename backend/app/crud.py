@@ -1,12 +1,87 @@
+"""
+CRUD operations using eager loading and better query patterns.
+"""
+
+from sqlalchemy import select, desc, and_, func, text
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, desc, and_, func
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import selectinload, joinedload, contains_eager
 from typing import List, Optional, Dict, Any
 from datetime import datetime, UTC
+import logging
+
 from . import models, schemas
 
+logger = logging.getLogger(__name__)
 
-async def get_commits(db: AsyncSession, skip: int = 0, limit: int = 100) -> List[models.Commit]:
+
+async def get_benchmark_trends(
+    db: AsyncSession,
+    benchmark_name: str,
+    binary_id: str,
+    environment_id: str,
+    limit: int = 50,
+) -> List[Dict[str, Any]]:
+    """
+    Get benchmark trends using a more efficient query.
+    Returns data points for charting benchmark performance over time.
+    """
+    query = text("""
+        WITH recent_commits AS (
+            SELECT DISTINCT c.sha, c.timestamp, c.python_major, c.python_minor, c.python_patch
+            FROM commits c
+            JOIN runs r ON c.sha = r.commit_sha
+            JOIN benchmark_results br ON r.run_id = br.run_id
+            WHERE r.binary_id = :binary_id
+              AND r.environment_id = :environment_id
+              AND br.benchmark_name = :benchmark_name
+            ORDER BY c.timestamp DESC
+            LIMIT :limit
+        )
+        SELECT 
+            rc.sha,
+            rc.timestamp,
+            rc.python_major,
+            rc.python_minor,
+            rc.python_patch,
+            br.high_watermark_bytes,
+            br.total_allocated_bytes
+        FROM recent_commits rc
+        JOIN runs r ON rc.sha = r.commit_sha
+        JOIN benchmark_results br ON r.run_id = br.run_id
+        WHERE r.binary_id = :binary_id
+          AND r.environment_id = :environment_id
+          AND br.benchmark_name = :benchmark_name
+        ORDER BY rc.timestamp ASC
+    """)
+
+    result = await db.execute(
+        query,
+        {
+            "benchmark_name": benchmark_name,
+            "binary_id": binary_id,
+            "environment_id": environment_id,
+            "limit": limit,
+        },
+    )
+
+    trends = []
+    for row in result:
+        trends.append(
+            {
+                "sha": row.sha,
+                "timestamp": row.timestamp,
+                "python_version": f"{row.python_major}.{row.python_minor}.{row.python_patch}",
+                "high_watermark_bytes": row.high_watermark_bytes,
+                "total_allocated_bytes": row.total_allocated_bytes,
+            }
+        )
+
+    return trends
+
+
+async def get_commits(
+    db: AsyncSession, skip: int = 0, limit: int = 100
+) -> List[models.Commit]:
     result = await db.execute(
         select(models.Commit)
         .order_by(desc(models.Commit.timestamp))
@@ -21,7 +96,9 @@ async def get_commit_by_sha(db: AsyncSession, sha: str) -> Optional[models.Commi
     return result.scalars().first()
 
 
-async def create_commit(db: AsyncSession, commit: schemas.CommitCreate) -> models.Commit:
+async def create_commit(
+    db: AsyncSession, commit: schemas.CommitCreate
+) -> models.Commit:
     db_commit = models.Commit(
         sha=commit.sha,
         timestamp=commit.timestamp,
@@ -43,11 +120,15 @@ async def get_binaries(db: AsyncSession) -> List[models.Binary]:
 
 
 async def get_binary_by_id(db: AsyncSession, binary_id: str) -> Optional[models.Binary]:
-    result = await db.execute(select(models.Binary).where(models.Binary.id == binary_id))
+    result = await db.execute(
+        select(models.Binary).where(models.Binary.id == binary_id)
+    )
     return result.scalars().first()
 
 
-async def create_binary(db: AsyncSession, binary: schemas.BinaryCreate) -> models.Binary:
+async def create_binary(
+    db: AsyncSession, binary: schemas.BinaryCreate
+) -> models.Binary:
     db_binary = models.Binary(
         id=binary.id,
         name=binary.name,
@@ -65,12 +146,18 @@ async def get_environments(db: AsyncSession) -> List[models.Environment]:
     return result.scalars().all()
 
 
-async def get_environment_by_id(db: AsyncSession, environment_id: str) -> Optional[models.Environment]:
-    result = await db.execute(select(models.Environment).where(models.Environment.id == environment_id))
+async def get_environment_by_id(
+    db: AsyncSession, environment_id: str
+) -> Optional[models.Environment]:
+    result = await db.execute(
+        select(models.Environment).where(models.Environment.id == environment_id)
+    )
     return result.scalars().first()
 
 
-async def create_environment(db: AsyncSession, environment: schemas.EnvironmentCreate) -> models.Environment:
+async def create_environment(
+    db: AsyncSession, environment: schemas.EnvironmentCreate
+) -> models.Environment:
     db_environment = models.Environment(
         id=environment.id,
         name=environment.name,
@@ -83,22 +170,22 @@ async def create_environment(db: AsyncSession, environment: schemas.EnvironmentC
 
 
 async def get_runs(
-    db: AsyncSession, 
+    db: AsyncSession,
     commit_sha: Optional[str] = None,
     binary_id: Optional[str] = None,
     environment_id: Optional[str] = None,
-    skip: int = 0, 
-    limit: int = 100
+    skip: int = 0,
+    limit: int = 100,
 ) -> List[models.Run]:
     query = select(models.Run).order_by(desc(models.Run.timestamp))
-    
+
     if commit_sha:
         query = query.where(models.Run.commit_sha == commit_sha)
     if binary_id:
         query = query.where(models.Run.binary_id == binary_id)
     if environment_id:
         query = query.where(models.Run.environment_id == environment_id)
-    
+
     query = query.offset(skip).limit(limit)
     result = await db.execute(query)
     return result.scalars().all()
@@ -126,23 +213,25 @@ async def get_benchmark_results(
     run_id: Optional[str] = None,
     benchmark_name: Optional[str] = None,
     skip: int = 0,
-    limit: int = 100
+    limit: int = 100,
 ) -> List[models.BenchmarkResult]:
     query = select(models.BenchmarkResult)
-    
+
     if run_id:
         query = query.where(models.BenchmarkResult.run_id == run_id)
     if benchmark_name:
         query = query.where(models.BenchmarkResult.benchmark_name == benchmark_name)
-    
+
     query = query.offset(skip).limit(limit)
     result = await db.execute(query)
     return result.scalars().all()
 
 
-async def create_benchmark_result(db: AsyncSession, result: schemas.BenchmarkResultCreate) -> models.BenchmarkResult:
+async def create_benchmark_result(
+    db: AsyncSession, result: schemas.BenchmarkResultCreate
+) -> models.BenchmarkResult:
     result_id = f"{result.run_id}_{result.benchmark_name.replace('_', '-')}"
-    
+
     db_result = models.BenchmarkResult(
         id=result_id,
         run_id=result.run_id,
@@ -150,7 +239,9 @@ async def create_benchmark_result(db: AsyncSession, result: schemas.BenchmarkRes
         high_watermark_bytes=result.result_json.high_watermark_bytes,
         allocation_histogram=result.result_json.allocation_histogram,
         total_allocated_bytes=result.result_json.total_allocated_bytes,
-        top_allocating_functions=[func.dict() for func in result.result_json.top_allocating_functions],
+        top_allocating_functions=[
+            func.dict() for func in result.result_json.top_allocating_functions
+        ],
         flamegraph_html=result.flamegraph_html,
     )
     db.add(db_result)
@@ -159,85 +250,13 @@ async def create_benchmark_result(db: AsyncSession, result: schemas.BenchmarkRes
     return db_result
 
 
-async def get_benchmark_result_by_id(db: AsyncSession, result_id: str) -> Optional[models.BenchmarkResult]:
-    result = await db.execute(select(models.BenchmarkResult).where(models.BenchmarkResult.id == result_id))
-    return result.scalars().first()
-
-
-async def get_enriched_benchmark_results(
-    db: AsyncSession,
-    benchmark_name: Optional[str] = None,
-    binary_id: Optional[str] = None,
-    environment_id: Optional[str] = None,
-    python_major: Optional[int] = None,
-    python_minor: Optional[int] = None,
-    skip: int = 0,
-    limit: int = 100
-) -> List[Dict[str, Any]]:
-    query = (
-        select(models.BenchmarkResult, models.Run, models.Commit, models.Binary, models.Environment)
-        .join(models.Run, models.BenchmarkResult.run_id == models.Run.run_id)
-        .join(models.Commit, models.Run.commit_sha == models.Commit.sha)
-        .join(models.Binary, models.Run.binary_id == models.Binary.id)
-        .join(models.Environment, models.Run.environment_id == models.Environment.id)
-        .order_by(desc(models.Commit.timestamp))
+async def get_benchmark_result_by_id(
+    db: AsyncSession, result_id: str
+) -> Optional[models.BenchmarkResult]:
+    result = await db.execute(
+        select(models.BenchmarkResult).where(models.BenchmarkResult.id == result_id)
     )
-    
-    if benchmark_name:
-        query = query.where(models.BenchmarkResult.benchmark_name == benchmark_name)
-    if binary_id:
-        query = query.where(models.Binary.id == binary_id)
-    if environment_id:
-        query = query.where(models.Environment.id == environment_id)
-    if python_major is not None:
-        query = query.where(models.Commit.python_major == python_major)
-    if python_minor is not None:
-        query = query.where(models.Commit.python_minor == python_minor)
-    
-    query = query.offset(skip).limit(limit)
-    result = await db.execute(query)
-    
-    enriched_results = []
-    for benchmark_result, run, commit, binary, environment in result:
-        enriched_results.append({
-            "id": benchmark_result.id,
-            "run_id": benchmark_result.run_id,
-            "benchmark_name": benchmark_result.benchmark_name,
-            "result_json": {
-                "high_watermark_bytes": benchmark_result.high_watermark_bytes,
-                "allocation_histogram": benchmark_result.allocation_histogram,
-                "total_allocated_bytes": benchmark_result.total_allocated_bytes,
-                "top_allocating_functions": benchmark_result.top_allocating_functions,
-            },
-            "commit": {
-                "sha": commit.sha,
-                "timestamp": commit.timestamp,
-                "message": commit.message,
-                "author": commit.author,
-                "python_version": {
-                    "major": commit.python_major,
-                    "minor": commit.python_minor,
-                    "patch": commit.python_patch,
-                }
-            },
-            "binary": {
-                "id": binary.id,
-                "name": binary.name,
-                "flags": binary.flags,
-            },
-            "environment": {
-                "id": environment.id,
-                "name": environment.name,
-                "description": environment.description,
-            },
-            "run_python_version": {
-                "major": run.python_major,
-                "minor": run.python_minor,
-                "patch": run.python_patch,
-            }
-        })
-    
-    return enriched_results
+    return result.scalars().first()
 
 
 async def get_python_version_filters(db: AsyncSession) -> List[Dict[str, Any]]:
@@ -245,21 +264,27 @@ async def get_python_version_filters(db: AsyncSession) -> List[Dict[str, Any]]:
         select(
             models.Commit.python_major,
             models.Commit.python_minor,
-        ).distinct().order_by(desc(models.Commit.python_major), desc(models.Commit.python_minor))
+        )
+        .distinct()
+        .order_by(desc(models.Commit.python_major), desc(models.Commit.python_minor))
     )
-    
+
     versions = []
     for major, minor in result:
-        versions.append({
-            "label": f"{major}.{minor}",
-            "major": major,
-            "minor": minor,
-        })
-    
+        versions.append(
+            {
+                "label": f"{major}.{minor}",
+                "major": major,
+                "minor": minor,
+            }
+        )
+
     return versions
 
 
-async def get_previous_commit_with_binary_and_environment(db: AsyncSession, current_commit: models.Commit, binary_id: str, environment_id: str) -> Optional[models.Commit]:
+async def get_previous_commit_with_binary_and_environment(
+    db: AsyncSession, current_commit: models.Commit, binary_id: str, environment_id: str
+) -> Optional[models.Commit]:
     """
     Efficiently find the previous commit that:
     1. Has an earlier timestamp than the current commit
@@ -275,7 +300,7 @@ async def get_previous_commit_with_binary_and_environment(db: AsyncSession, curr
                 models.Commit.python_major == current_commit.python_major,
                 models.Commit.python_minor == current_commit.python_minor,
                 models.Run.binary_id == binary_id,
-                models.Run.environment_id == environment_id
+                models.Run.environment_id == environment_id,
             )
         )
         .order_by(desc(models.Commit.timestamp))
@@ -284,7 +309,9 @@ async def get_previous_commit_with_binary_and_environment(db: AsyncSession, curr
     return result.scalars().first()
 
 
-async def get_environments_for_binary(db: AsyncSession, binary_id: str) -> List[Dict[str, Any]]:
+async def get_environments_for_binary(
+    db: AsyncSession, binary_id: str
+) -> List[Dict[str, Any]]:
     """
     Get all environments where this binary has been tested, with commit counts
     """
@@ -293,83 +320,91 @@ async def get_environments_for_binary(db: AsyncSession, binary_id: str) -> List[
             models.Environment.id,
             models.Environment.name,
             models.Environment.description,
-            func.count(models.Run.run_id).label('run_count'),
-            func.count(func.distinct(models.Run.commit_sha)).label('commit_count')
+            func.count(models.Run.run_id).label("run_count"),
+            func.count(func.distinct(models.Run.commit_sha)).label("commit_count"),
         )
         .join(models.Run, models.Environment.id == models.Run.environment_id)
         .where(models.Run.binary_id == binary_id)
-        .group_by(models.Environment.id, models.Environment.name, models.Environment.description)
+        .group_by(
+            models.Environment.id,
+            models.Environment.name,
+            models.Environment.description,
+        )
         .order_by(models.Environment.name)
     )
-    
+
     environments = []
     for env_id, name, description, run_count, commit_count in result:
-        environments.append({
-            "id": env_id,
-            "name": name,
-            "description": description,
-            "run_count": run_count,
-            "commit_count": commit_count
-        })
-    
+        environments.append(
+            {
+                "id": env_id,
+                "name": name,
+                "description": description,
+                "run_count": run_count,
+                "commit_count": commit_count,
+            }
+        )
+
     return environments
 
 
-async def get_commits_for_binary_and_environment(db: AsyncSession, binary_id: str, environment_id: str) -> List[Dict[str, Any]]:
+async def get_commits_for_binary_and_environment(
+    db: AsyncSession, binary_id: str, environment_id: str
+) -> List[Dict[str, Any]]:
     """
     Get all commits tested in a specific binary + environment combination
     """
     result = await db.execute(
-        select(models.Commit, models.Run.timestamp.label('run_timestamp'))
+        select(models.Commit, models.Run.timestamp.label("run_timestamp"))
         .join(models.Run, models.Commit.sha == models.Run.commit_sha)
         .where(
             and_(
                 models.Run.binary_id == binary_id,
-                models.Run.environment_id == environment_id
+                models.Run.environment_id == environment_id,
             )
         )
         .order_by(desc(models.Run.timestamp))
     )
-    
+
     commits = []
     for commit, run_timestamp in result:
-        commits.append({
-            "sha": commit.sha,
-            "timestamp": commit.timestamp,
-            "message": commit.message,
-            "author": commit.author,
-            "python_version": {
-                "major": commit.python_major,
-                "minor": commit.python_minor,
-                "patch": commit.python_patch,
-            },
-            "run_timestamp": run_timestamp
-        })
-    
+        commits.append(
+            {
+                "sha": commit.sha,
+                "timestamp": commit.timestamp,
+                "message": commit.message,
+                "author": commit.author,
+                "python_version": {
+                    "major": commit.python_major,
+                    "minor": commit.python_minor,
+                    "patch": commit.python_patch,
+                },
+                "run_timestamp": run_timestamp,
+            }
+        )
+
     return commits
 
 
 # Auth Token CRUD operations
-async def get_auth_token_by_token(db: AsyncSession, token: str) -> Optional[models.AuthToken]:
+async def get_auth_token_by_token(
+    db: AsyncSession, token: str
+) -> Optional[models.AuthToken]:
     """Get an auth token by its token value."""
     result = await db.execute(
         select(models.AuthToken).where(
-            and_(
-                models.AuthToken.token == token,
-                models.AuthToken.is_active == True
-            )
+            and_(models.AuthToken.token == token, models.AuthToken.is_active == True)
         )
     )
     return result.scalars().first()
 
 
-async def create_auth_token(db: AsyncSession, token: str, name: str, description: str = None) -> models.AuthToken:
+async def create_auth_token(
+    db: AsyncSession, token: str, name: str, description: str = None
+) -> models.AuthToken:
     """Create a new auth token."""
     db_token = models.AuthToken(
-        token=token,
-        name=name,
-        description=description,
-        created_at=datetime.utcnow()
+        token=token, name=name, description=description, created_at=datetime.utcnow()
     )
     db.add(db_token)
     await db.commit()
@@ -407,130 +442,3 @@ async def deactivate_auth_token(db: AsyncSession, token_id: int) -> bool:
         await db.commit()
         return True
     return False
-
-
-async def get_filtered_benchmark_results(
-    db: AsyncSession,
-    environment_id: Optional[str] = None,
-    python_major: Optional[int] = None,
-    python_minor: Optional[int] = None,
-    binary_ids: Optional[List[str]] = None,
-    benchmark_names: Optional[List[str]] = None,
-    limit: int = 5000
-) -> List[Dict[str, Any]]:
-    """
-    Get benchmark results with optimized filtering for specific use cases.
-    This function is optimized for fetching results when filtering by multiple binaries and benchmarks.
-    """
-    # Build the query with all necessary joins upfront
-    query = select(
-        models.BenchmarkResult.id,
-        models.BenchmarkResult.run_id,
-        models.BenchmarkResult.benchmark_name,
-        models.BenchmarkResult.high_watermark_bytes,
-        models.BenchmarkResult.allocation_histogram,
-        models.BenchmarkResult.total_allocated_bytes,
-        models.BenchmarkResult.top_allocating_functions,
-        models.Run.commit_sha,
-        models.Run.binary_id,
-        models.Run.environment_id,
-        models.Run.python_major.label("run_python_major"),
-        models.Run.python_minor.label("run_python_minor"),
-        models.Run.python_patch.label("run_python_patch"),
-        models.Run.timestamp.label("run_timestamp"),
-        models.Commit.sha.label("commit_sha"),
-        models.Commit.timestamp.label("commit_timestamp"),
-        models.Commit.message.label("commit_message"),
-        models.Commit.author.label("commit_author"),
-        models.Commit.python_major.label("commit_python_major"),
-        models.Commit.python_minor.label("commit_python_minor"),
-        models.Commit.python_patch.label("commit_python_patch"),
-        models.Binary.id.label("binary_id"),
-        models.Binary.name.label("binary_name"),
-        models.Binary.flags.label("binary_flags"),
-        models.Binary.description.label("binary_description"),
-        models.Environment.id.label("environment_id"),
-        models.Environment.name.label("environment_name"),
-        models.Environment.description.label("environment_description")
-    ).select_from(models.BenchmarkResult).join(
-        models.Run, models.BenchmarkResult.run_id == models.Run.run_id
-    ).join(
-        models.Commit, models.Run.commit_sha == models.Commit.sha
-    ).join(
-        models.Binary, models.Run.binary_id == models.Binary.id
-    ).join(
-        models.Environment, models.Run.environment_id == models.Environment.id
-    )
-    
-    # Apply filters
-    filters = []
-    
-    if environment_id:
-        filters.append(models.Run.environment_id == environment_id)
-    
-    if python_major is not None:
-        filters.append(models.Commit.python_major == python_major)
-    
-    if python_minor is not None:
-        filters.append(models.Commit.python_minor == python_minor)
-    
-    if binary_ids:
-        filters.append(models.Run.binary_id.in_(binary_ids))
-    
-    if benchmark_names:
-        filters.append(models.BenchmarkResult.benchmark_name.in_(benchmark_names))
-    
-    if filters:
-        query = query.where(and_(*filters))
-    
-    # Order by commit timestamp descending for consistent ordering
-    query = query.order_by(desc(models.Commit.timestamp)).limit(limit)
-    
-    # Execute query
-    result = await db.execute(query)
-    rows = result.fetchall()
-    
-    # Transform rows into the expected format
-    results = []
-    for row in rows:
-        results.append({
-            "id": row.id,
-            "run_id": row.run_id,
-            "benchmark_name": row.benchmark_name,
-            "result_json": {
-                "high_watermark_bytes": row.high_watermark_bytes,
-                "allocation_histogram": row.allocation_histogram,
-                "total_allocated_bytes": row.total_allocated_bytes,
-                "top_allocating_functions": row.top_allocating_functions,
-                "benchmark_name": row.benchmark_name
-            },
-            "commit": {
-                "sha": row.commit_sha,
-                "timestamp": row.commit_timestamp,
-                "message": row.commit_message,
-                "author": row.commit_author,
-                "python_version": {
-                    "major": row.commit_python_major,
-                    "minor": row.commit_python_minor,
-                    "patch": row.commit_python_patch
-                }
-            },
-            "binary": {
-                "id": row.binary_id,
-                "name": row.binary_name,
-                "flags": row.binary_flags,
-                "description": row.binary_description
-            },
-            "environment": {
-                "id": row.environment_id,
-                "name": row.environment_name,
-                "description": row.environment_description
-            },
-            "run_python_version": {
-                "major": row.run_python_major,
-                "minor": row.run_python_minor,
-                "patch": row.run_python_patch
-            }
-        })
-    
-    return results

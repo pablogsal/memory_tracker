@@ -33,11 +33,11 @@
     --ring: 275 100% 30%; /* Indigo-based ring */
 
     --chart-1: 275 76% 51%; /* Indigo variant */
-    --chart-2: 51 80% 55%;  /* Gold variant */
+    --chart-2: 51 80% 55%; /* Gold variant */
     --chart-3: 210 60% 50%; /* Blue variant */
     --chart-4: 150 60% 45%; /* Green variant */
-    --chart-5: 30 80% 60%;  /* Orange variant */
-    
+    --chart-5: 30 80% 60%; /* Orange variant */
+
     --radius: 0.5rem;
 
     --sidebar-background: 0 0% 90%;
@@ -78,7 +78,7 @@
     --border: 240 10% 25%;
     --input: 240 10% 25%;
     --ring: 275 80% 65%; /* Lighter Indigo-based ring */
-    
+
     --chart-1: 275 70% 60%;
     --chart-2: 51 90% 65%;
     --chart-3: 210 70% 60%;
@@ -105,10 +105,16 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
-  h1, h2, h3, h4, h5, h6 {
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
     @apply font-headline;
   }
-  code, pre {
+  code,
+  pre {
     @apply font-code;
   }
 }

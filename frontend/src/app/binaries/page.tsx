@@ -1,11 +1,27 @@
-
-"use client";
+'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ListChecks, Settings, Code2, AlertCircle, Zap, Bug, Gauge, Shield, Search, ArrowRight } from 'lucide-react';
+import {
+  ListChecks,
+  Settings,
+  Code2,
+  AlertCircle,
+  Zap,
+  Bug,
+  Gauge,
+  Shield,
+  Search,
+  ArrowRight,
+} from 'lucide-react';
 import type { Binary } from '@/lib/types';
 import { api } from '@/lib/api';
 import Link from 'next/link';
@@ -23,7 +39,9 @@ export default function BinariesPage() {
         const binariesData = await api.getBinaries();
         setBinaries(binariesData);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load binaries');
+        setError(
+          err instanceof Error ? err.message : 'Failed to load binaries'
+        );
       } finally {
         setLoading(false);
       }
@@ -37,7 +55,9 @@ export default function BinariesPage() {
       <div className="space-y-8">
         <div className="flex flex-col items-center text-center">
           <ListChecks className="h-16 w-16 text-primary mb-4" />
-          <h1 className="text-4xl font-bold font-headline">Binary Configurations</h1>
+          <h1 className="text-4xl font-bold font-headline">
+            Binary Configurations
+          </h1>
           <div className="h-4 w-96 bg-muted animate-pulse rounded mt-2"></div>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
@@ -63,7 +83,9 @@ export default function BinariesPage() {
       <div className="space-y-8">
         <div className="flex flex-col items-center text-center">
           <ListChecks className="h-16 w-16 text-primary mb-4" />
-          <h1 className="text-4xl font-bold font-headline">Binary Configurations</h1>
+          <h1 className="text-4xl font-bold font-headline">
+            Binary Configurations
+          </h1>
         </div>
         <Card className="max-w-3xl mx-auto">
           <CardContent className="flex flex-col items-center justify-center h-64 text-muted-foreground">
@@ -79,7 +101,7 @@ export default function BinariesPage() {
   // Helper function to get icon and colors based on configure flags
   const getBinaryInfo = (binary: Binary) => {
     const flags = binary.flags || [];
-    
+
     // Determine type based on configure flags
     const hasDebug = flags.includes('--with-debug');
     const hasNoGil = flags.includes('--disable-gil');
@@ -88,80 +110,88 @@ export default function BinariesPage() {
     const hasTrace = flags.includes('--with-trace-refs');
     const hasValgrind = flags.includes('--with-valgrind');
     const isDefault = flags.length === 0;
-    
+
     // Determine primary characteristic (priority order)
     if (hasLTO && hasPGO) {
       return {
         icon: Zap,
-        description: binary.description || "Highly optimized build combining Link Time Optimization with Profile Guided Optimization",
-        color: "text-violet-600 dark:text-violet-400",
-        bgColor: "bg-muted/50 border-border hover:bg-muted/70",
-        accentColor: "border-l-4 border-l-violet-500",
+        description:
+          binary.description ||
+          'Highly optimized build combining Link Time Optimization with Profile Guided Optimization',
+        color: 'text-violet-600 dark:text-violet-400',
+        bgColor: 'bg-muted/50 border-border hover:bg-muted/70',
+        accentColor: 'border-l-4 border-l-violet-500',
       };
     } else if (hasDebug && hasNoGil) {
       return {
         icon: Shield,
-        description: binary.description || "Debug build combined with no-GIL features",
-        color: "text-purple-600 dark:text-purple-400",
-        bgColor: "bg-muted/50 border-border hover:bg-muted/70",
-        accentColor: "border-l-4 border-l-purple-500",
+        description:
+          binary.description || 'Debug build combined with no-GIL features',
+        color: 'text-purple-600 dark:text-purple-400',
+        bgColor: 'bg-muted/50 border-border hover:bg-muted/70',
+        accentColor: 'border-l-4 border-l-purple-500',
       };
     } else if (hasTrace) {
       return {
         icon: Search,
-        description: binary.description || "Build with trace reference counting enabled",
-        color: "text-teal-600 dark:text-teal-400",
-        bgColor: "bg-muted/50 border-border hover:bg-muted/70",
-        accentColor: "border-l-4 border-l-teal-500",
+        description:
+          binary.description || 'Build with trace reference counting enabled',
+        color: 'text-teal-600 dark:text-teal-400',
+        bgColor: 'bg-muted/50 border-border hover:bg-muted/70',
+        accentColor: 'border-l-4 border-l-teal-500',
       };
     } else if (hasPGO) {
       return {
         icon: Zap,
-        description: binary.description || "Profile Guided Optimization build",
-        color: "text-indigo-600 dark:text-indigo-400",
-        bgColor: "bg-muted/50 border-border hover:bg-muted/70",
-        accentColor: "border-l-4 border-l-indigo-500",
+        description: binary.description || 'Profile Guided Optimization build',
+        color: 'text-indigo-600 dark:text-indigo-400',
+        bgColor: 'bg-muted/50 border-border hover:bg-muted/70',
+        accentColor: 'border-l-4 border-l-indigo-500',
       };
     } else if (hasLTO) {
       return {
         icon: Gauge,
-        description: binary.description || "Link Time Optimization enabled",
-        color: "text-green-600 dark:text-green-400",
-        bgColor: "bg-muted/50 border-border hover:bg-muted/70",
-        accentColor: "border-l-4 border-l-green-500",
+        description: binary.description || 'Link Time Optimization enabled',
+        color: 'text-green-600 dark:text-green-400',
+        bgColor: 'bg-muted/50 border-border hover:bg-muted/70',
+        accentColor: 'border-l-4 border-l-green-500',
       };
     } else if (hasNoGil) {
       return {
         icon: Zap,
-        description: binary.description || "Experimental build without the Global Interpreter Lock",
-        color: "text-yellow-600 dark:text-yellow-400",
-        bgColor: "bg-muted/50 border-border hover:bg-muted/70",
-        accentColor: "border-l-4 border-l-yellow-500",
+        description:
+          binary.description ||
+          'Experimental build without the Global Interpreter Lock',
+        color: 'text-yellow-600 dark:text-yellow-400',
+        bgColor: 'bg-muted/50 border-border hover:bg-muted/70',
+        accentColor: 'border-l-4 border-l-yellow-500',
       };
     } else if (hasDebug) {
       return {
         icon: Bug,
-        description: binary.description || "Debug build with additional runtime checks",
-        color: "text-destructive",
-        bgColor: "bg-muted/50 border-border hover:bg-muted/70",
-        accentColor: "border-l-4 border-l-red-500",
+        description:
+          binary.description || 'Debug build with additional runtime checks',
+        color: 'text-destructive',
+        bgColor: 'bg-muted/50 border-border hover:bg-muted/70',
+        accentColor: 'border-l-4 border-l-red-500',
       };
     } else if (isDefault) {
       return {
         icon: Settings,
-        description: binary.description || "Standard CPython build with default settings",
-        color: "text-primary",
-        bgColor: "bg-muted/50 border-border hover:bg-muted/70",
-        accentColor: "border-l-4 border-l-blue-500",
+        description:
+          binary.description || 'Standard CPython build with default settings',
+        color: 'text-primary',
+        bgColor: 'bg-muted/50 border-border hover:bg-muted/70',
+        accentColor: 'border-l-4 border-l-blue-500',
       };
     } else {
       // Fallback for unknown combinations
       return {
         icon: Settings,
-        description: binary.description || "Custom build configuration",
-        color: "text-muted-foreground",
-        bgColor: "bg-muted/50 border-border hover:bg-muted/70",
-        accentColor: "border-l-4 border-l-gray-500",
+        description: binary.description || 'Custom build configuration',
+        color: 'text-muted-foreground',
+        bgColor: 'bg-muted/50 border-border hover:bg-muted/70',
+        accentColor: 'border-l-4 border-l-gray-500',
       };
     }
   };
@@ -170,10 +200,13 @@ export default function BinariesPage() {
     <div className="space-y-8">
       <div className="flex flex-col items-center text-center">
         <ListChecks className="h-16 w-16 text-primary mb-4" />
-        <h1 className="text-4xl font-bold font-headline">Binary Configurations</h1>
+        <h1 className="text-4xl font-bold font-headline">
+          Binary Configurations
+        </h1>
         <p className="text-lg text-muted-foreground mt-2 max-w-2xl">
-          Explore different CPython compilation configurations. Each binary represents a unique combination of 
-          compilation flags that affects performance, debugging capabilities, and memory usage patterns.
+          Explore different CPython compilation configurations. Each binary
+          represents a unique combination of compilation flags that affects
+          performance, debugging capabilities, and memory usage patterns.
         </p>
       </div>
 
@@ -182,15 +215,21 @@ export default function BinariesPage() {
           {binaries.map((binary) => {
             const info = getBinaryInfo(binary);
             const IconComponent = info.icon;
-            
+
             return (
-              <Card key={binary.id} className={`hover:shadow-lg transition-all duration-200 ${info.accentColor}`}>
+              <Card
+                key={binary.id}
+                className={`hover:shadow-lg transition-all duration-200 ${info.accentColor}`}
+              >
                 <CardHeader className="pb-4">
                   <div className="flex items-center gap-3 mb-2">
                     <IconComponent className={`h-8 w-8 ${info.color}`} />
                     <div className="flex-1">
                       <CardTitle className="text-lg">{binary.name}</CardTitle>
-                      <Badge variant="outline" className="font-mono text-xs mt-1">
+                      <Badge
+                        variant="outline"
+                        className="font-mono text-xs mt-1"
+                      >
                         {binary.id}
                       </Badge>
                     </div>
@@ -199,7 +238,7 @@ export default function BinariesPage() {
                     {info.description}
                   </CardDescription>
                 </CardHeader>
-                
+
                 <CardContent className="pt-0">
                   <div className="space-y-3">
                     <div>
@@ -210,9 +249,9 @@ export default function BinariesPage() {
                       {binary.flags.length > 0 ? (
                         <div className="flex flex-wrap gap-1">
                           {binary.flags.slice(0, 2).map((flag, index) => (
-                            <Badge 
-                              key={index} 
-                              variant="secondary" 
+                            <Badge
+                              key={index}
+                              variant="secondary"
                               className="font-mono text-xs"
                             >
                               {flag}
@@ -230,7 +269,7 @@ export default function BinariesPage() {
                         </Badge>
                       )}
                     </div>
-                    
+
                     <Link href={`/binaries/${binary.id}`}>
                       <Button className="w-full mt-4" variant="outline">
                         Explore Environments
@@ -248,7 +287,9 @@ export default function BinariesPage() {
           <CardContent className="flex flex-col items-center justify-center h-64 text-muted-foreground">
             <Settings className="w-16 h-16 mb-4" />
             <p className="text-lg">No binary configurations found</p>
-            <p className="text-sm">Check your database or add some binary configurations.</p>
+            <p className="text-sm">
+              Check your database or add some binary configurations.
+            </p>
           </CardContent>
         </Card>
       )}
