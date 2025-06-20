@@ -24,6 +24,7 @@ import type { EnrichedBenchmarkResult, MetricKey, PythonVersionFilterOption, Bin
 import { METRIC_OPTIONS } from '@/lib/types';
 import { api } from '@/lib/api';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Slider } from '@/components/ui/slider';
 
 const formatBytes = (bytes: number, decimals = 2) => {
   if (!bytes && bytes !== 0) return 'N/A';
@@ -52,6 +53,7 @@ export default function BenchmarkTrendPage() {
   const [selectedMetric, setSelectedMetric] = useState<MetricKey>(METRIC_OPTIONS[0].value);
   const [selectedBenchmarks, setSelectedBenchmarks] = useState<string[]>([]);
   const [benchmarkSearch, setBenchmarkSearch] = useState('');
+  const [maxDataPoints, setMaxDataPoints] = useState<number>(50);
 
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
@@ -228,10 +230,17 @@ export default function BenchmarkTrendPage() {
       });
     });
     
-    // Sort by pre-computed timestamp (much more efficient)
-    return Object.values(dataByCommit).sort((a, b) => a.sortTimestamp - b.sortTimestamp);
+    // Sort by pre-computed timestamp and limit to maxDataPoints
+    const sortedData = Object.values(dataByCommit).sort((a, b) => a.sortTimestamp - b.sortTimestamp);
+    
+    // If we have more data points than the limit, take the most recent ones
+    if (sortedData.length > maxDataPoints) {
+      return sortedData.slice(-maxDataPoints);
+    }
+    
+    return sortedData;
 
-  }, [filteredData, selectedMetric, selectedBenchmarks]);
+  }, [filteredData, selectedMetric, selectedBenchmarks, maxDataPoints]);
 
   // Calculate Y-axis domain for auto-scaling
   const yAxisDomain = useMemo(() => {
@@ -522,6 +531,7 @@ export default function BenchmarkTrendPage() {
             </ScrollArea>
             {selectedBenchmarks.length >= lineColors.length && <p className="text-xs text-muted-foreground mt-1">Maximum number of benchmarks selected for visualization.</p>}
           </div>
+
         </CardContent>
       </Card>
 
@@ -535,6 +545,29 @@ export default function BenchmarkTrendPage() {
             <CardDescription>
               Showing {METRIC_OPTIONS.find(m=>m.value === selectedMetric)?.label} for {binaries.find(b=>b.id === selectedBinaryId)?.name} in {environments.find(e=>e.id === selectedEnvironmentId)?.name} on Python {selectedPythonVersionKey}.x.
             </CardDescription>
+            
+            {/* Data Points Control */}
+            {Object.values(filteredData.reduce((acc, result) => {
+              acc[result.commit.sha] = true;
+              return acc;
+            }, {} as Record<string, boolean>)).length > 10 && (
+              <div className="flex items-center gap-4 mt-4 p-3 bg-muted/30 rounded-md">
+                <span className="text-sm text-muted-foreground min-w-0">Points:</span>
+                <div className="flex items-center space-x-3 flex-1">
+                  <span className="text-xs text-muted-foreground">10</span>
+                  <Slider
+                    value={[maxDataPoints]}
+                    onValueChange={(value) => setMaxDataPoints(value[0])}
+                    max={200}
+                    min={10}
+                    step={5}
+                    className="flex-1"
+                  />
+                  <span className="text-xs text-muted-foreground">200</span>
+                </div>
+                <span className="text-sm font-medium min-w-0">{maxDataPoints}</span>
+              </div>
+            )}
           </div>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
