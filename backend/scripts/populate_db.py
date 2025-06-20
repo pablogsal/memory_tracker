@@ -9,13 +9,25 @@ import sys
 import os
 import random
 from datetime import datetime, timedelta
-from typing import List
+from typing import List, Optional
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.orm import sessionmaker
 
 # Add the parent directory to the path so we can import from app
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from app.database import AsyncSessionLocal
 from app import models, schemas, crud
+
+def create_database_session(database_url: Optional[str] = None):
+    """Create database engine and session based on the provided URL."""
+    if database_url:
+        engine = create_async_engine(database_url, echo=False)
+        AsyncSessionLocal = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+        return engine, AsyncSessionLocal
+    else:
+        # Use default from app.database
+        from app.database import AsyncSessionLocal
+        return None, AsyncSessionLocal
 
 
 # Mock data generators
@@ -235,9 +247,11 @@ def generate_benchmark_results(runs: List[models.Run]) -> List[schemas.Benchmark
     return results
 
 
-async def populate_database():
+async def populate_database(database_url: Optional[str] = None):
     """Populate the database with mock data using efficient bulk inserts."""
     print("Populating database with mock data...")
+    
+    engine, AsyncSessionLocal = create_database_session(database_url)
     
     async with AsyncSessionLocal() as db:
         try:
@@ -269,27 +283,51 @@ async def populate_database():
             await db.flush()  # Get IDs without committing
             print(f"✅ Created {len(commit_objects)} commits")
             
-            # Generate and bulk insert binaries
+            # Check existing binaries and only create missing ones
             print("Creating binaries...")
             binary_data = generate_binaries()
-            binary_objects = [
-                models.Binary(id=binary.id, name=binary.name, flags=binary.flags, description=binary.description)
-                for binary in binary_data
-            ]
-            db.add_all(binary_objects)
-            await db.flush()
-            print(f"✅ Created {len(binary_objects)} binaries")
+            existing_binaries = await crud.get_binaries(db)
+            existing_binary_ids = {b.id for b in existing_binaries}
             
-            # Generate and bulk insert environments
+            binary_objects = []
+            for binary in binary_data:
+                if binary.id not in existing_binary_ids:
+                    binary_objects.append(
+                        models.Binary(id=binary.id, name=binary.name, flags=binary.flags, description=binary.description)
+                    )
+            
+            if binary_objects:
+                db.add_all(binary_objects)
+                await db.flush()
+                print(f"✅ Created {len(binary_objects)} new binaries")
+            else:
+                print(f"✅ All binaries already exist")
+            
+            # Use all binaries (existing + new) for runs
+            all_binary_objects = existing_binaries + binary_objects
+            
+            # Check existing environments and only create missing ones
             print("Creating environments...")
             environment_data = generate_environments()
-            environment_objects = [
-                models.Environment(id=env.id, name=env.name, description=env.description)
-                for env in environment_data
-            ]
-            db.add_all(environment_objects)
-            await db.flush()
-            print(f"✅ Created {len(environment_objects)} environments")
+            existing_environments = await crud.get_environments(db)
+            existing_environment_ids = {e.id for e in existing_environments}
+            
+            environment_objects = []
+            for env in environment_data:
+                if env.id not in existing_environment_ids:
+                    environment_objects.append(
+                        models.Environment(id=env.id, name=env.name, description=env.description)
+                    )
+            
+            if environment_objects:
+                db.add_all(environment_objects)
+                await db.flush()
+                print(f"✅ Created {len(environment_objects)} new environments")
+            else:
+                print(f"✅ All environments already exist")
+            
+            # Use all environments (existing + new) for runs
+            all_environment_objects = existing_environments + environment_objects
             
             # Generate runs: each commit x each binary x each environment for complete coverage
             print("Creating runs...")
@@ -297,9 +335,9 @@ async def populate_database():
             run_counter = 0
             
             for commit_obj in commit_objects:
-                for binary_obj in binary_objects:
+                for binary_obj in all_binary_objects:
                     # Test each binary in both environments for complete data coverage
-                    for env_obj in environment_objects:
+                    for env_obj in all_environment_objects:
                         run_id = f"run_{commit_obj.sha[:8]}_{binary_obj.id}_{env_obj.id}_{run_counter}"
                         run_timestamp = commit_obj.timestamp + timedelta(minutes=random.randint(5, 60))
                         
@@ -359,8 +397,8 @@ async def populate_database():
             
             print(f"\n🎉 Database populated successfully!")
             print(f"   - {len(commit_objects)} commits (100 per Python version)")
-            print(f"   - {len(binary_objects)} binaries")
-            print(f"   - {len(environment_objects)} environments")
+            print(f"   - {len(binary_objects)} new binaries ({len(all_binary_objects)} total)")
+            print(f"   - {len(environment_objects)} new environments ({len(all_environment_objects)} total)")
             print(f"   - {len(run_objects)} runs (commit × binary × environment combinations)")
             print(f"   - {len(result_objects)} benchmark results")
             
@@ -414,6 +452,7 @@ if __name__ == "__main__":
     
     parser = argparse.ArgumentParser(description='Populate database with mock data')
     parser.add_argument('--clear-first', action='store_true', help='Clear existing data first')
+    parser.add_argument('--database-url', type=str, help='Database URL (e.g., postgresql+asyncpg://user:pass@host/db)')
     
     args = parser.parse_args()
     
@@ -422,7 +461,7 @@ if __name__ == "__main__":
         # This would require implementing a clear function
         pass
     
-    success = asyncio.run(populate_database())
+    success = asyncio.run(populate_database(database_url=args.database_url))
     
     if not success:
         sys.exit(1)
