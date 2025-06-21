@@ -3,6 +3,7 @@ Admin API routes for managing binaries, environments, and runs.
 Protected by GitHub OAuth authentication.
 """
 
+import logging
 from datetime import datetime, UTC
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Response, Request
@@ -16,6 +17,8 @@ from ..models import AdminSession, Binary, Environment, Run, AdminUser, AuthToke
 from ..schemas import BinaryCreate, Binary as BinarySchema, EnvironmentCreate, Environment as EnvironmentSchema
 from .. import crud
 from pydantic import BaseModel
+
+logger = logging.getLogger(__name__)
 
 # Pydantic schemas for admin user management
 class AdminUserCreate(BaseModel):
@@ -75,48 +78,48 @@ async def github_auth_callback(
 ):
     """Handle GitHub OAuth callback and create admin session."""
     try:
-        print(f"🔄 GITHUB_AUTH_CALLBACK: Starting OAuth callback for code: {code[:8]}...")
+        logger.info(f"🔄 GITHUB_AUTH_CALLBACK: Starting OAuth callback for code: {code[:8]}...")
         
         # Exchange code for access token
-        print(f"🔄 GITHUB_AUTH_CALLBACK: Exchanging code for access token...")
+        logger.info(f"🔄 GITHUB_AUTH_CALLBACK: Exchanging code for access token...")
         access_token = await github_oauth.exchange_code_for_token(code, state)
-        print(f"✅ GITHUB_AUTH_CALLBACK: Got access token (first 8 chars): {access_token[:8]}")
+        logger.info(f"✅ GITHUB_AUTH_CALLBACK: Got access token (first 8 chars): {access_token[:8]}")
         
         # Get user info
-        print(f"🔄 GITHUB_AUTH_CALLBACK: Getting user info...")
+        logger.info(f"🔄 GITHUB_AUTH_CALLBACK: Getting user info...")
         github_user = await github_oauth.get_user_info(access_token)
-        print(f"✅ GITHUB_AUTH_CALLBACK: Got user info for: {github_user.login} (ID: {github_user.id})")
+        logger.info(f"✅ GITHUB_AUTH_CALLBACK: Got user info for: {github_user.login} (ID: {github_user.id})")
         
         # Check if user is admin
-        print(f"🔄 GITHUB_AUTH_CALLBACK: Checking admin status...")
+        logger.info(f"🔄 GITHUB_AUTH_CALLBACK: Checking admin status...")
         is_admin = await github_oauth.is_admin_user(github_user.login, db)
-        print(f"🔐 GITHUB_AUTH_CALLBACK: Admin check result for {github_user.login}: {is_admin}")
+        logger.info(f"🔐 GITHUB_AUTH_CALLBACK: Admin check result for {github_user.login}: {is_admin}")
         
         if not is_admin:
-            print(f"❌ GITHUB_AUTH_CALLBACK: User {github_user.login} is not authorized as admin")
+            logger.warning(f"❌ GITHUB_AUTH_CALLBACK: User {github_user.login} is not authorized as admin")
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="User is not authorized as admin",
             )
         
-        print(f"✅ GITHUB_AUTH_CALLBACK: User {github_user.login} is authorized, creating session...")
+        logger.info(f"✅ GITHUB_AUTH_CALLBACK: User {github_user.login} is authorized, creating session...")
         
         # Create admin session
         try:
-            print(f"🔄 GITHUB_AUTH_CALLBACK: Calling create_admin_session...")
+            logger.info(f"🔄 GITHUB_AUTH_CALLBACK: Calling create_admin_session...")
             session_token = await create_admin_session(db, github_user)
-            print(f"✅ GITHUB_AUTH_CALLBACK: Created admin session for {github_user.login}, token: {session_token[:8]}...")
+            logger.info(f"✅ GITHUB_AUTH_CALLBACK: Created admin session for {github_user.login}, token: {session_token[:8]}...")
         except Exception as db_error:
             import traceback
-            print(f"❌ GITHUB_AUTH_CALLBACK: Database error creating session: {db_error}")
-            print(f"❌ GITHUB_AUTH_CALLBACK: Full traceback: {traceback.format_exc()}")
+            logger.error(f"❌ GITHUB_AUTH_CALLBACK: Database error creating session: {db_error}")
+            logger.error(f"❌ GITHUB_AUTH_CALLBACK: Full traceback: {traceback.format_exc()}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Database error: {str(db_error)}",
             )
         
         # Set secure cookie
-        print(f"🔄 GITHUB_AUTH_CALLBACK: Setting admin_session cookie...")
+        logger.info(f"🔄 GITHUB_AUTH_CALLBACK: Setting admin_session cookie...")
         response.set_cookie(
             key="admin_session",
             value=session_token,
@@ -125,9 +128,9 @@ async def github_auth_callback(
             samesite="lax",
             max_age=24 * 60 * 60,  # 24 hours
         )
-        print(f"✅ GITHUB_AUTH_CALLBACK: Cookie set successfully")
+        logger.info(f"✅ GITHUB_AUTH_CALLBACK: Cookie set successfully")
         
-        print(f"✅ GITHUB_AUTH_CALLBACK: Auth callback completed successfully for {github_user.login}")
+        logger.info(f"✅ GITHUB_AUTH_CALLBACK: Auth callback completed successfully for {github_user.login}")
         
         return {
             "success": True,
@@ -139,12 +142,12 @@ async def github_auth_callback(
         }
         
     except HTTPException:
-        print(f"❌ GITHUB_AUTH_CALLBACK: HTTPException occurred, re-raising")
+        logger.warning(f"❌ GITHUB_AUTH_CALLBACK: HTTPException occurred, re-raising")
         raise
     except Exception as e:
         import traceback
-        print(f"❌ GITHUB_AUTH_CALLBACK: Unexpected error in auth callback: {e}")
-        print(f"❌ GITHUB_AUTH_CALLBACK: Full traceback: {traceback.format_exc()}")
+        logger.error(f"❌ GITHUB_AUTH_CALLBACK: Unexpected error in auth callback: {e}")
+        logger.error(f"❌ GITHUB_AUTH_CALLBACK: Full traceback: {traceback.format_exc()}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Authentication failed: {str(e)}",
@@ -168,8 +171,8 @@ async def get_current_admin(
     admin_session: AdminSession = Depends(require_admin_auth),
 ):
     """Get current admin user info."""
-    print(f"🔄 GET_CURRENT_ADMIN: Endpoint called")
-    print(f"✅ GET_CURRENT_ADMIN: Authentication successful, user: {admin_session.github_username}")
+    logger.info(f"🔄 GET_CURRENT_ADMIN: Endpoint called")
+    logger.info(f"✅ GET_CURRENT_ADMIN: Authentication successful, user: {admin_session.github_username}")
     
     result = {
         "username": admin_session.github_username,
@@ -178,7 +181,7 @@ async def get_current_admin(
         "avatar_url": admin_session.github_avatar_url,
     }
     
-    print(f"✅ GET_CURRENT_ADMIN: Returning user data for: {admin_session.github_username}")
+    logger.info(f"✅ GET_CURRENT_ADMIN: Returning user data for: {admin_session.github_username}")
     return result
 
 
