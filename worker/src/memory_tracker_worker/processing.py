@@ -22,6 +22,7 @@ def process_commits_local_checkout(
     environment_id: str,
     force: bool = False,
     auth_token: str = None,
+    api_base: str = "http://localhost:8000",
 ) -> Optional[str]:
     """Process commits using local checkout mode."""
     try:
@@ -156,7 +157,7 @@ def process_commits_local_checkout(
                 # Upload results to server
                 logger.info(f"Uploading results for commit {commit.hexsha[:8]}")
                 try:
-                    upload_results_to_server(run_dir, binary_id=binary_id, environment_id=environment_id, auth_token=auth_token)
+                    upload_results_to_server(run_dir, binary_id=binary_id, environment_id=environment_id, auth_token=auth_token, server_url=api_base)
                 except Exception as e:
                     logger.warning(f"Failed to upload results for commit {commit.hexsha[:8]}: {e}")
                     logger.info("Results are still saved locally")
@@ -196,6 +197,7 @@ def process_commit(
     environment_id: str,
     force: bool = False,
     auth_token: str = None,
+    api_base: str = "http://localhost:8000",
 ) -> Optional[str]:
     """Process a single commit."""
     build_dir = None
@@ -385,7 +387,7 @@ def process_commit(
             # Upload results to server
             logger.info(f"Uploading results for commit {commit.hexsha[:8]}")
             try:
-                upload_results_to_server(run_dir, binary_id=binary_id, environment_id=environment_id, auth_token=auth_token)
+                upload_results_to_server(run_dir, binary_id=binary_id, environment_id=environment_id, auth_token=auth_token, server_url=api_base)
             except Exception as e:
                 logger.warning(f"Failed to upload results for commit {commit.hexsha[:8]}: {e}")
                 logger.info("Results are still saved locally")
@@ -441,6 +443,7 @@ def process_commits_in_parallel(
     max_workers: int,
     batch_size: int,
     auth_token: str,
+    api_base: str = "http://localhost:8000",
 ) -> List[Tuple[git.Commit, Optional[str]]]:
     """Process commits in parallel using ThreadPoolExecutor."""
     all_results = []
@@ -472,7 +475,8 @@ def process_commits_in_parallel(
                         binary_id,
                         environment_id,
                         force,
-                        auth_token
+                        auth_token,
+                        api_base
                     ): commit
                     for commit, worktree_path in worktrees
                 }

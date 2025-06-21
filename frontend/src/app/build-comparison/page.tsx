@@ -174,13 +174,17 @@ export default function BuildComparisonPage() {
         !selectedPythonVersionKey ||
         selectedBinaries.length === 0
       ) {
+        setDataProcessing(false);
         return;
       }
 
       const versionOption = pythonVersionOptions.find(
         (v) => v.label === selectedPythonVersionKey
       );
-      if (!versionOption) return;
+      if (!versionOption) {
+        setDataProcessing(false);
+        return;
+      }
 
       try {
         setDataProcessing(true);
@@ -226,6 +230,7 @@ export default function BuildComparisonPage() {
         selectedBinaries.length === 0 ||
         allBenchmarkNames.length === 0
       ) {
+        setDataProcessing(false);
         return;
       }
 
@@ -1028,9 +1033,12 @@ export default function BuildComparisonPage() {
                   }
                 />
                 <ScrollArea className="h-48 rounded-md border p-4">
-                  {loading ||
-                  dataProcessing ||
-                  allBenchmarkNames.length === 0 ? (
+                  {loading || 
+                   dataProcessing || 
+                   (allBenchmarkNames.length === 0 && 
+                    selectedEnvironmentId && 
+                    selectedPythonVersionKey && 
+                    selectedBinaries.length > 0) ? (
                     <div className="space-y-2">
                       {[...Array(8)].map((_, i) => (
                         <div key={i} className="flex items-center space-x-2">
@@ -1038,6 +1046,11 @@ export default function BuildComparisonPage() {
                           <div className="h-4 bg-muted rounded animate-pulse flex-1"></div>
                         </div>
                       ))}
+                    </div>
+                  ) : allBenchmarkNames.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center h-32 text-muted-foreground">
+                      <p className="text-sm">No benchmarks available</p>
+                      <p className="text-xs">Try selecting a different environment, Python version, or binaries</p>
                     </div>
                   ) : (
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-2">

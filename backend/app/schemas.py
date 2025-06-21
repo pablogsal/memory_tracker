@@ -35,6 +35,9 @@ class BinaryBase(BaseModel):
     description: Optional[str] = (
         None  # Description of what this binary configuration does
     )
+    color: Optional[str] = "#8b5cf6"  # Hex color code
+    icon: Optional[str] = "server"  # Lucide icon name
+    display_order: Optional[int] = 0  # Order for display
 
 
 class BinaryCreate(BinaryBase):

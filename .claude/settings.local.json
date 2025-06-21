@@ -18,7 +18,10 @@
       "Bash(npm install:*)",
       "Bash(npx prettier:*)",
       "Bash(mv:*)",
-      "Bash(pip install:*)"
+      "Bash(pip install:*)",
+      "Bash(curl:*)",
+      "Bash(memory-tracker:*)",
+      "Bash(npm run lint:*)"
     ],
     "deny": []
   }

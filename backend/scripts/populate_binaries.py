@@ -43,48 +43,72 @@ def get_standard_binaries():
             "name": "Default Build",
             "flags": [],
             "description": "Standard CPython build with default compilation settings. Used as baseline for performance comparisons.",
+            "color": "#3b82f6",
+            "icon": "settings",
+            "display_order": 0,
         },
         {
             "id": "debug",
             "name": "Debug Build",
             "flags": ["--with-debug"],
             "description": "Debug build with additional runtime checks and debugging symbols. Higher memory usage but better error detection.",
-        },
-        {
-            "id": "nogil",
-            "name": "No GIL Build",
-            "flags": ["--disable-gil"],
-            "description": "Experimental build without the Global Interpreter Lock (GIL). Enables true parallelism for CPU-bound tasks.",
-        },
-        {
-            "id": "debug-nogil",
-            "name": "Debug No GIL Build",
-            "flags": ["--with-debug", "--disable-gil"],
-            "description": "Debug build combined with no-GIL features. Best for development and testing of parallel applications.",
-        },
-        {
-            "id": "lto",
-            "name": "LTO Build",
-            "flags": ["--with-lto"],
-            "description": "Link Time Optimization enabled. Performs cross-module optimizations for better performance.",
+            "color": "#ef4444",
+            "icon": "bug",
+            "display_order": 1,
         },
         {
             "id": "pgo",
             "name": "PGO Build",
             "flags": ["--enable-optimizations"],
             "description": "Profile Guided Optimization build. Uses runtime profiling data to optimize frequently executed code paths.",
+            "color": "#6366f1",
+            "icon": "zap",
+            "display_order": 2,
         },
         {
-            "id": "trace",
-            "name": "Trace Build",
-            "flags": ["--with-trace-refs"],
-            "description": "Build with trace reference counting enabled. Useful for memory leak detection and debugging.",
+            "id": "lto",
+            "name": "LTO Build",
+            "flags": ["--with-lto"],
+            "description": "Link Time Optimization enabled. Performs cross-module optimizations for better performance.",
+            "color": "#10b981",
+            "icon": "gauge",
+            "display_order": 3,
         },
         {
             "id": "lto-pgo",
             "name": "LTO + PGO Build",
             "flags": ["--with-lto", "--enable-optimizations"],
             "description": "Highly optimized build combining Link Time Optimization with Profile Guided Optimization. Maximum performance with cross-module optimizations and runtime profiling data.",
+            "color": "#8b5cf6",
+            "icon": "rocket",
+            "display_order": 4,
+        },
+        {
+            "id": "nogil",
+            "name": "No GIL Build",
+            "flags": ["--disable-gil"],
+            "description": "Experimental build without the Global Interpreter Lock (GIL). Enables true parallelism for CPU-bound tasks.",
+            "color": "#f59e0b",
+            "icon": "zap",
+            "display_order": 5,
+        },
+        {
+            "id": "debug-nogil",
+            "name": "Debug No GIL Build",
+            "flags": ["--with-debug", "--disable-gil"],
+            "description": "Debug build combined with no-GIL features. Best for development and testing of parallel applications.",
+            "color": "#a855f7",
+            "icon": "shield",
+            "display_order": 6,
+        },
+        {
+            "id": "trace",
+            "name": "Trace Build",
+            "flags": ["--with-trace-refs"],
+            "description": "Build with trace reference counting enabled. Useful for memory leak detection and debugging.",
+            "color": "#06b6d4",
+            "icon": "search",
+            "display_order": 7,
         },
     ]
 
@@ -117,10 +141,14 @@ async def populate_binaries(force: bool = False, database_url: str = None):
                         existing_binary.name = binary_data["name"]
                         existing_binary.flags = binary_data["flags"]
                         existing_binary.description = binary_data["description"]
+                        existing_binary.color = binary_data.get("color", "#8b5cf6")
+                        existing_binary.icon = binary_data.get("icon", "server")
+                        existing_binary.display_order = binary_data.get("display_order", 0)
                         await db.commit()
                         print(f"✅ Updated binary '{binary_id}': {binary_data['name']}")
                         print(f"   Flags: {binary_data['flags']}")
                         print(f"   Description: {binary_data['description']}")
+                        print(f"   Color: {binary_data.get('color', '#8b5cf6')}, Icon: {binary_data.get('icon', 'server')}")
                         updated_count += 1
                     else:
                         print(
@@ -137,6 +165,9 @@ async def populate_binaries(force: bool = False, database_url: str = None):
                         name=binary_data["name"],
                         flags=binary_data["flags"],
                         description=binary_data["description"],
+                        color=binary_data.get("color", "#8b5cf6"),
+                        icon=binary_data.get("icon", "server"),
+                        display_order=binary_data.get("display_order", 0),
                     )
 
                     new_binary = await crud.create_binary(db, binary_create)

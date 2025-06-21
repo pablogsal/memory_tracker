@@ -22,6 +22,8 @@ services:
     build: 
       context: ./backend
       dockerfile: Dockerfile
+    env_file:
+      - .env
     environment:
       DATABASE_URL: postgresql+asyncpg://memory_tracker_user:memory_tracker_password@db:5432/memory_tracker
     ports:
@@ -66,6 +68,8 @@ services:
     build: 
       context: ./backend
       dockerfile: Dockerfile
+    env_file:
+      - .env
     environment:
       DATABASE_URL: postgresql+asyncpg://memory_tracker_user:memory_tracker_password@db:5432/memory_tracker
     depends_on:

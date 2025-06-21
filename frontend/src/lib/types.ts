@@ -9,6 +9,9 @@ export type Binary = {
   name: string;
   flags: string[];
   description?: string;
+  color?: string;
+  icon?: string;
+  display_order?: number;
 };
 
 export type Environment = {
@@ -64,4 +67,33 @@ export type DiffTableRow = {
   prev_python_version_str?: string;
   curr_python_version_str: string;
   curr_result_id: string;
+};
+
+export type AuthToken = {
+  id: number;
+  name: string;
+  description?: string;
+  created_at: string;
+  last_used?: string;
+  is_active: boolean;
+  token_preview: string;
+};
+
+export type TokenCreate = {
+  name: string;
+  description?: string;
+};
+
+export type TokenUpdate = {
+  name?: string;
+  description?: string;
+};
+
+export type TokenAnalytics = {
+  total_tokens: number;
+  active_tokens: number;
+  inactive_tokens: number;
+  used_tokens: number;
+  never_used_tokens: number;
+  recent_active_tokens: number;
 };

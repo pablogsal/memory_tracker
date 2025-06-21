@@ -99,9 +99,14 @@ async def get_commit_by_sha(db: AsyncSession, sha: str) -> Optional[models.Commi
 async def create_commit(
     db: AsyncSession, commit: schemas.CommitCreate
 ) -> models.Commit:
+    # Convert timezone-aware timestamp to timezone-naive for database storage
+    timestamp = commit.timestamp
+    if timestamp.tzinfo is not None:
+        timestamp = timestamp.replace(tzinfo=None)
+    
     db_commit = models.Commit(
         sha=commit.sha,
-        timestamp=commit.timestamp,
+        timestamp=timestamp,
         message=commit.message,
         author=commit.author,
         python_major=commit.python_version.major,
@@ -115,7 +120,12 @@ async def create_commit(
 
 
 async def get_binaries(db: AsyncSession) -> List[models.Binary]:
-    result = await db.execute(select(models.Binary))
+    result = await db.execute(
+        select(models.Binary).order_by(
+            models.Binary.display_order.asc(), 
+            models.Binary.name.asc()
+        )
+    )
     return result.scalars().all()
 
 
@@ -134,6 +144,9 @@ async def create_binary(
         name=binary.name,
         flags=binary.flags,
         description=binary.description,
+        color=binary.color,
+        icon=binary.icon,
+        display_order=binary.display_order,
     )
     db.add(db_binary)
     await db.commit()
@@ -191,7 +204,61 @@ async def get_runs(
     return result.scalars().all()
 
 
+async def get_runs_with_commits(
+    db: AsyncSession,
+    commit_sha: Optional[str] = None,
+    binary_id: Optional[str] = None,
+    environment_id: Optional[str] = None,
+    skip: int = 0,
+    limit: int = 100,
+) -> List[tuple]:
+    """Get runs with their associated commit information."""
+    query = (
+        select(models.Run, models.Commit)
+        .join(models.Commit, models.Run.commit_sha == models.Commit.sha)
+        .order_by(desc(models.Run.timestamp))
+    )
+
+    if commit_sha:
+        # Use prefix matching (starts with) for commit SHA
+        query = query.where(models.Run.commit_sha.ilike(f'{commit_sha}%'))
+    if binary_id:
+        query = query.where(models.Run.binary_id == binary_id)
+    if environment_id:
+        query = query.where(models.Run.environment_id == environment_id)
+
+    query = query.offset(skip).limit(limit)
+    result = await db.execute(query)
+    return result.all()
+
+
+async def count_runs(
+    db: AsyncSession,
+    commit_sha: Optional[str] = None,
+    binary_id: Optional[str] = None,
+    environment_id: Optional[str] = None,
+) -> int:
+    """Count total runs matching the filter criteria."""
+    query = select(func.count(models.Run.run_id))
+
+    if commit_sha:
+        # Use prefix matching (starts with) for commit SHA
+        query = query.where(models.Run.commit_sha.ilike(f'{commit_sha}%'))
+    if binary_id:
+        query = query.where(models.Run.binary_id == binary_id)
+    if environment_id:
+        query = query.where(models.Run.environment_id == environment_id)
+
+    result = await db.execute(query)
+    return result.scalar() or 0
+
+
 async def create_run(db: AsyncSession, run: schemas.RunCreate) -> models.Run:
+    # Convert timezone-aware timestamp to timezone-naive for database storage
+    timestamp = run.timestamp
+    if timestamp.tzinfo is not None:
+        timestamp = timestamp.replace(tzinfo=None)
+    
     db_run = models.Run(
         run_id=run.run_id,
         commit_sha=run.commit_sha,
@@ -200,7 +267,7 @@ async def create_run(db: AsyncSession, run: schemas.RunCreate) -> models.Run:
         python_major=run.python_version.major,
         python_minor=run.python_version.minor,
         python_patch=run.python_version.patch,
-        timestamp=run.timestamp,
+        timestamp=timestamp,
     )
     db.add(db_run)
     await db.commit()
@@ -404,7 +471,7 @@ async def create_auth_token(
 ) -> models.AuthToken:
     """Create a new auth token."""
     db_token = models.AuthToken(
-        token=token, name=name, description=description, created_at=datetime.now(UTC)
+        token=token, name=name, description=description
     )
     db.add(db_token)
     await db.commit()
@@ -419,7 +486,7 @@ async def update_token_last_used(db: AsyncSession, token: str) -> None:
     )
     auth_token = result.scalars().first()
     if auth_token:
-        auth_token.last_used = datetime.now(UTC)
+        auth_token.last_used = datetime.now(UTC).replace(tzinfo=None)
         await db.commit()
 
 
@@ -442,3 +509,70 @@ async def deactivate_auth_token(db: AsyncSession, token_id: int) -> bool:
         await db.commit()
         return True
     return False
+
+
+# Admin Users CRUD Operations
+async def get_admin_users(db: AsyncSession) -> List[models.AdminUser]:
+    """Get all admin users."""
+    result = await db.execute(
+        select(models.AdminUser).where(models.AdminUser.is_active == True).order_by(models.AdminUser.added_at)
+    )
+    return result.scalars().all()
+
+
+async def get_admin_user_by_username(db: AsyncSession, username: str) -> Optional[models.AdminUser]:
+    """Get admin user by GitHub username."""
+    result = await db.execute(
+        select(models.AdminUser).where(
+            and_(
+                models.AdminUser.github_username == username,
+                models.AdminUser.is_active == True
+            )
+        )
+    )
+    return result.scalars().first()
+
+
+async def create_admin_user(db: AsyncSession, username: str, added_by: str, notes: Optional[str] = None) -> models.AdminUser:
+    """Create a new admin user."""
+    admin_user = models.AdminUser(
+        github_username=username,
+        added_by=added_by,
+        notes=notes
+    )
+    db.add(admin_user)
+    await db.commit()
+    await db.refresh(admin_user)
+    return admin_user
+
+
+async def deactivate_admin_user(db: AsyncSession, username: str) -> bool:
+    """Deactivate an admin user."""
+    result = await db.execute(
+        select(models.AdminUser).where(models.AdminUser.github_username == username)
+    )
+    admin_user = result.scalars().first()
+    if admin_user:
+        admin_user.is_active = False
+        await db.commit()
+        return True
+    return False
+
+
+async def is_admin_user(db: AsyncSession, username: str) -> bool:
+    """Check if a user is an admin."""
+    admin_user = await get_admin_user_by_username(db, username)
+    return admin_user is not None
+
+
+async def ensure_initial_admin(db: AsyncSession, username: str) -> None:
+    """Ensure the initial admin user exists."""
+    if not username:
+        return
+    
+    existing = await get_admin_user_by_username(db, username)
+    if not existing:
+        logger.info(f"Creating initial admin user: {username}")
+        await create_admin_user(db, username, "system", "Initial admin from environment variable")
+    else:
+        logger.info(f"Initial admin user already exists: {username}")

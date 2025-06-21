@@ -9,17 +9,23 @@ This Docker Compose configuration brings up the entire Memory Tracker applicatio
 
 ## Quick Start
 
-1. **Build and start all services:**
+1. **Set up environment variables:**
+   ```bash
+   cp .env.example .env
+   # Edit .env with your GitHub OAuth credentials and admin username
+   ```
+
+2. **Build and start all services:**
    ```bash
    docker-compose up --build
    ```
 
-2. **Start in detached mode (background):**
+3. **Start in detached mode (background):**
    ```bash
    docker-compose up -d --build
    ```
 
-3. **Access the application:**
+4. **Access the application:**
    - Frontend: http://localhost:3000
    - Backend API: http://localhost:8000
    - API Documentation: http://localhost:8000/docs
@@ -99,16 +105,30 @@ docker-compose up -d backend
 
 ### Environment Variables
 
-You can override environment variables by creating a `.env` file:
+The application uses a `.env` file for configuration. Copy the example and customize:
+
+```bash
+cp .env.example .env
+```
+
+Required variables in `.env`:
 
 ```env
-# .env file
-POSTGRES_DB=memory_tracker
-POSTGRES_USER=memory_tracker_user
-POSTGRES_PASSWORD=your_secure_password
-DATABASE_URL=postgresql+asyncpg://memory_tracker_user:your_secure_password@db:5432/memory_tracker
-NEXT_PUBLIC_API_BASE=http://localhost:8000
+# GitHub OAuth Configuration (required for admin authentication)
+GITHUB_CLIENT_ID=your_github_oauth_app_client_id
+GITHUB_CLIENT_SECRET=your_github_oauth_app_secret
+OAUTH_REDIRECT_URI=http://localhost:9002/auth/callback  # for dev
+OAUTH_STATE_SECRET=your-random-secret-key
+
+# Admin Authentication (required)
+ADMIN_INITIAL_USERNAME=your_github_username
+
+# Legacy team-based auth (optional, deprecated)
+ADMIN_GITHUB_ORG=python
+ADMIN_GITHUB_TEAMS=memory-python-org
 ```
+
+**Note:** Development compose file uses port 9002 for frontend, production uses 3000.
 
 ### Accessing the Database
 

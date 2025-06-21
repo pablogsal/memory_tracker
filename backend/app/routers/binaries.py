@@ -27,6 +27,9 @@ async def get_binaries(db: AsyncSession = Depends(get_database)):
                 name=binary.name,
                 flags=binary.flags,
                 description=binary.description,
+                color=binary.color,
+                icon=binary.icon,
+                display_order=binary.display_order,
             )
             for binary in binaries
         ]
@@ -50,6 +53,9 @@ async def get_binary(binary_id: str, db: AsyncSession = Depends(get_database)):
         name=binary.name,
         flags=binary.flags,
         description=binary.description,
+        color=binary.color,
+        icon=binary.icon,
+        display_order=binary.display_order,
     )
 
 

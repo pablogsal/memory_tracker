@@ -15,15 +15,11 @@ import {
   Settings,
   Code2,
   AlertCircle,
-  Zap,
-  Bug,
-  Gauge,
-  Shield,
-  Search,
   ArrowRight,
 } from 'lucide-react';
 import type { Binary } from '@/lib/types';
 import { api } from '@/lib/api';
+import { getIconByName } from '@/lib/icons';
 import Link from 'next/link';
 
 export default function BinariesPage() {
@@ -37,6 +33,7 @@ export default function BinariesPage() {
         setLoading(true);
         setError(null);
         const binariesData = await api.getBinaries();
+        console.log('Binaries data received:', binariesData.map(b => ({ id: b.id, icon: b.icon, color: b.color })));
         setBinaries(binariesData);
       } catch (err) {
         setError(
@@ -98,102 +95,20 @@ export default function BinariesPage() {
     );
   }
 
-  // Helper function to get icon and colors based on configure flags
+  // Helper function to get display info from binary configuration
   const getBinaryInfo = (binary: Binary) => {
-    const flags = binary.flags || [];
-
-    // Determine type based on configure flags
-    const hasDebug = flags.includes('--with-debug');
-    const hasNoGil = flags.includes('--disable-gil');
-    const hasLTO = flags.includes('--with-lto');
-    const hasPGO = flags.includes('--enable-optimizations');
-    const hasTrace = flags.includes('--with-trace-refs');
-    const hasValgrind = flags.includes('--with-valgrind');
-    const isDefault = flags.length === 0;
-
-    // Determine primary characteristic (priority order)
-    if (hasLTO && hasPGO) {
-      return {
-        icon: Zap,
-        description:
-          binary.description ||
-          'Highly optimized build combining Link Time Optimization with Profile Guided Optimization',
-        color: 'text-violet-600 dark:text-violet-400',
-        bgColor: 'bg-muted/50 border-border hover:bg-muted/70',
-        accentColor: 'border-l-4 border-l-violet-500',
-      };
-    } else if (hasDebug && hasNoGil) {
-      return {
-        icon: Shield,
-        description:
-          binary.description || 'Debug build combined with no-GIL features',
-        color: 'text-purple-600 dark:text-purple-400',
-        bgColor: 'bg-muted/50 border-border hover:bg-muted/70',
-        accentColor: 'border-l-4 border-l-purple-500',
-      };
-    } else if (hasTrace) {
-      return {
-        icon: Search,
-        description:
-          binary.description || 'Build with trace reference counting enabled',
-        color: 'text-teal-600 dark:text-teal-400',
-        bgColor: 'bg-muted/50 border-border hover:bg-muted/70',
-        accentColor: 'border-l-4 border-l-teal-500',
-      };
-    } else if (hasPGO) {
-      return {
-        icon: Zap,
-        description: binary.description || 'Profile Guided Optimization build',
-        color: 'text-indigo-600 dark:text-indigo-400',
-        bgColor: 'bg-muted/50 border-border hover:bg-muted/70',
-        accentColor: 'border-l-4 border-l-indigo-500',
-      };
-    } else if (hasLTO) {
-      return {
-        icon: Gauge,
-        description: binary.description || 'Link Time Optimization enabled',
-        color: 'text-green-600 dark:text-green-400',
-        bgColor: 'bg-muted/50 border-border hover:bg-muted/70',
-        accentColor: 'border-l-4 border-l-green-500',
-      };
-    } else if (hasNoGil) {
-      return {
-        icon: Zap,
-        description:
-          binary.description ||
-          'Experimental build without the Global Interpreter Lock',
-        color: 'text-yellow-600 dark:text-yellow-400',
-        bgColor: 'bg-muted/50 border-border hover:bg-muted/70',
-        accentColor: 'border-l-4 border-l-yellow-500',
-      };
-    } else if (hasDebug) {
-      return {
-        icon: Bug,
-        description:
-          binary.description || 'Debug build with additional runtime checks',
-        color: 'text-destructive',
-        bgColor: 'bg-muted/50 border-border hover:bg-muted/70',
-        accentColor: 'border-l-4 border-l-red-500',
-      };
-    } else if (isDefault) {
-      return {
-        icon: Settings,
-        description:
-          binary.description || 'Standard CPython build with default settings',
-        color: 'text-primary',
-        bgColor: 'bg-muted/50 border-border hover:bg-muted/70',
-        accentColor: 'border-l-4 border-l-blue-500',
-      };
-    } else {
-      // Fallback for unknown combinations
-      return {
-        icon: Settings,
-        description: binary.description || 'Custom build configuration',
-        color: 'text-muted-foreground',
-        bgColor: 'bg-muted/50 border-border hover:bg-muted/70',
-        accentColor: 'border-l-4 border-l-gray-500',
-      };
-    }
+    console.log(`getBinaryInfo for ${binary.id}: icon=${binary.icon}, color=${binary.color}`);
+    const IconComponent = getIconByName(binary.icon);
+    const color = binary.color || '#8b5cf6';
+    
+    return {
+      icon: IconComponent,
+      description: binary.description || 'CPython build configuration',
+      color: 'text-current',
+      bgColor: 'bg-muted/50 border-border hover:bg-muted/70',
+      accentColor: 'border-l-4',
+      accentBorderColor: color,
+    };
   };
 
   return (
@@ -220,10 +135,14 @@ export default function BinariesPage() {
               <Card
                 key={binary.id}
                 className={`hover:shadow-lg transition-all duration-200 ${info.accentColor}`}
+                style={{ borderLeftColor: info.accentBorderColor }}
               >
                 <CardHeader className="pb-4">
                   <div className="flex items-center gap-3 mb-2">
-                    <IconComponent className={`h-8 w-8 ${info.color}`} />
+                    <IconComponent 
+                      className="h-8 w-8" 
+                      style={{ color: info.accentBorderColor }}
+                    />
                     <div className="flex-1">
                       <CardTitle className="text-lg">{binary.name}</CardTitle>
                       <Badge

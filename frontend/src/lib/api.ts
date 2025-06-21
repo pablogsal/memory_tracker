@@ -6,6 +6,10 @@ import type {
   Environment,
   PythonVersionFilterOption,
   BenchmarkResultJson,
+  AuthToken,
+  TokenCreate,
+  TokenUpdate,
+  TokenAnalytics,
 } from './types';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8000';
@@ -94,7 +98,7 @@ export const api = {
   getCommit: (sha: string) => fetchApi<Commit>(`/api/commits/${sha}`),
 
   // Binary endpoints
-  getBinaries: () => fetchApi<Binary[]>('/api/binaries'),
+  getBinaries: () => fetchApi<Binary[]>(`/api/binaries?_t=${Date.now()}`),
   getBinary: (id: string) => fetchApi<Binary>(`/api/binaries/${id}`),
   getEnvironmentsForBinary: (binaryId: string) =>
     fetchApi<
@@ -240,6 +244,50 @@ export const api = {
   // Flamegraph endpoint
   getFlamegraph: (id: string) =>
     fetchApi<{ flamegraph_html: string }>(`/api/flamegraph/${id}`),
+
+  // Token management endpoints
+  getTokens: () =>
+    fetchApi<AuthToken[]>('/admin/tokens', {
+      credentials: 'include',
+    }),
+
+  createToken: (tokenData: TokenCreate) =>
+    fetchApi<{ success: boolean; token: string; token_info: AuthToken }>('/admin/tokens', {
+      method: 'POST',
+      credentials: 'include',
+      body: JSON.stringify(tokenData),
+    }),
+
+  updateToken: (tokenId: number, tokenUpdate: TokenUpdate) =>
+    fetchApi<AuthToken>(`/admin/tokens/${tokenId}`, {
+      method: 'PUT',
+      credentials: 'include',
+      body: JSON.stringify(tokenUpdate),
+    }),
+
+  deactivateToken: (tokenId: number) =>
+    fetchApi<{ success: boolean }>(`/admin/tokens/${tokenId}/deactivate`, {
+      method: 'POST',
+      credentials: 'include',
+    }),
+
+  activateToken: (tokenId: number) =>
+    fetchApi<{ success: boolean }>(`/admin/tokens/${tokenId}/activate`, {
+      method: 'POST',
+      credentials: 'include',
+    }),
+
+  deleteToken: (tokenId: number) =>
+    fetchApi<{ success: boolean }>(`/admin/tokens/${tokenId}`, {
+      method: 'DELETE',
+      credentials: 'include',
+    }),
+
+  getTokenAnalytics: () =>
+    fetchApi<TokenAnalytics>('/admin/tokens/analytics', {
+      credentials: 'include',
+    }),
 };
 
+export default api;
 export { ApiError };

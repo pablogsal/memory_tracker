@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .config import get_settings
 from .database import create_tables
 from .logging_config import LoggingManager, request_id_var, request_start_time_var, get_logger
-from .routers import health, commits, binaries, environments, runs, benchmarks, upload
+from .routers import health, commits, binaries, environments, runs, benchmarks, upload, admin
 
 
 def create_app(settings=None) -> FastAPI:
@@ -133,14 +133,21 @@ def create_app(settings=None) -> FastAPI:
         )
         await create_tables()
         logger.info("Database tables created successfully")
+        
+        # Ensure initial admin user exists
+        from .database import AsyncSessionLocal
+        from .crud import ensure_initial_admin
+        async with AsyncSessionLocal() as db:
+            await ensure_initial_admin(db, settings.admin_initial_username)
     
     # Include routers
     app.include_router(health.router)
     app.include_router(commits.router)
     app.include_router(binaries.router)
     app.include_router(environments.router)
-    app.include_router(runs.router)
+    app.include_router(runs.router)  
     app.include_router(benchmarks.router)
     app.include_router(upload.router)
+    app.include_router(admin.router)
     
     return app

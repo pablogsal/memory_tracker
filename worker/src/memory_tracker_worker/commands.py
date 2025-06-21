@@ -143,7 +143,7 @@ def benchmark_command(args):
     logger.info("Validating binary and environment registration...")
     try:
         from .benchmarks import validate_binary_and_environment
-        validate_binary_and_environment(args.binary_id, args.environment_id)
+        validate_binary_and_environment(args.binary_id, args.environment_id, args.api_base)
     except ValueError as e:
         logger.error(f"Pre-flight validation failed: {e}")
         sys.exit(1)
@@ -213,7 +213,8 @@ def benchmark_command(args):
             args.force,
             args.max_workers,
             args.batch_size,
-            auth_token
+            auth_token,
+            args.api_base
         )
         errors = [(commit, error) for commit, error in results if error is not None]
     elif getattr(args, 'local_checkout', False):
@@ -229,7 +230,8 @@ def benchmark_command(args):
             args.binary_id,
             args.environment_id,
             args.force,
-            auth_token
+            auth_token,
+            args.api_base
         )
         if error:
             errors.append((None, error))
@@ -247,7 +249,8 @@ def benchmark_command(args):
                 args.binary_id,
                 args.environment_id,
                 args.force,
-                auth_token
+                auth_token,
+                args.api_base
             )
             if error:
                 errors.append((commit, error))

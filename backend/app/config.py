@@ -41,6 +41,18 @@ class Settings(BaseSettings):
     # Authentication Configuration
     token_length: int = 32  # in bytes, results in 64 hex characters
     token_cleanup_days: int = 90
+    
+    # GitHub OAuth Configuration
+    github_client_id: str = ""
+    github_client_secret: str = ""
+    oauth_redirect_uri: str = "http://localhost:3000/auth/callback"
+    oauth_state_secret: str = "your-secret-key-change-me"
+    
+    # Admin authorization via GitHub usernames
+    admin_initial_username: str = ""  # Initial admin username (e.g., "pablogsal")
+    # Legacy team-based auth (deprecated)
+    admin_github_org: str = ""  # GitHub organization name (e.g., "python") 
+    admin_github_teams: str = ""  # Comma-separated list of team slugs (e.g., "memory-python-org")
 
     # Performance Configuration
     top_functions_limit: int = 10
@@ -67,6 +79,13 @@ class Settings(BaseSettings):
         if not self.cors_origins.strip():
             return []
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+    
+    @property
+    def admin_github_teams_list(self) -> List[str]:
+        """Parse admin GitHub teams string into a list."""
+        if not self.admin_github_teams.strip():
+            return []
+        return [team.strip() for team in self.admin_github_teams.split(",") if team.strip()]
 
 
 @lru_cache()

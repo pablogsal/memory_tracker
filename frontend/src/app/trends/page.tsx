@@ -204,13 +204,17 @@ export default function BenchmarkTrendPage() {
         !selectedEnvironmentId ||
         !selectedPythonVersionKey
       ) {
+        setDataProcessing(false);
         return;
       }
 
       const versionOption = pythonVersionOptions.find(
         (v) => v.label === selectedPythonVersionKey
       );
-      if (!versionOption) return;
+      if (!versionOption) {
+        setDataProcessing(false);
+        return;
+      }
 
       try {
         setDataProcessing(true);
@@ -247,16 +251,6 @@ export default function BenchmarkTrendPage() {
     availableEnvironments,
   ]);
 
-  // Ensure initial benchmark selection after data loads
-  useEffect(() => {
-    if (
-      !loading &&
-      allBenchmarkNames.length > 0 &&
-      selectedBenchmarks.length === 0
-    ) {
-      setSelectedBenchmarks([allBenchmarkNames[0]]);
-    }
-  }, [loading, allBenchmarkNames, selectedBenchmarks.length]);
 
   // Load trend data when benchmarks are selected
   useEffect(() => {
@@ -790,7 +784,7 @@ export default function BenchmarkTrendPage() {
               disabled={loading || allBenchmarkNames.length === 0}
             />
             <ScrollArea className="h-40 rounded-md border p-2">
-              {loading || allBenchmarkNames.length === 0 ? (
+              {loading || dataProcessing ? (
                 <div className="space-y-2">
                   {[...Array(6)].map((_, i) => (
                     <div key={i} className="flex items-center space-x-2">
@@ -798,6 +792,11 @@ export default function BenchmarkTrendPage() {
                       <div className="h-4 bg-muted rounded animate-pulse flex-1"></div>
                     </div>
                   ))}
+                </div>
+              ) : allBenchmarkNames.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-32 text-muted-foreground">
+                  <p className="text-sm">No benchmarks available</p>
+                  <p className="text-xs">Try selecting a different binary, environment, or Python version</p>
                 </div>
               ) : (
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-4 gap-y-2">

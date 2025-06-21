@@ -112,3 +112,8 @@ async def execute_in_transaction(func, *args, **kwargs):
     """
     async with transaction_scope() as session:
         return await func(session, *args, **kwargs)
+
+
+def get_async_session_local():
+    """Get the async session local for scripts that need it."""
+    return AsyncSessionLocal

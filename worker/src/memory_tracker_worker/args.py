@@ -123,6 +123,11 @@ def parse_args():
         help='Authentication token for uploading results to server. Can also be set via MEMORY_TRACKER_TOKEN environment variable.'
     )
     benchmark_parser.add_argument(
+        '--api-base',
+        default='http://localhost:8000',
+        help='Base URL for the memory tracker API (default: http://localhost:8000)'
+    )
+    benchmark_parser.add_argument(
         '--local-checkout',
         action='store_true',
         help='Use local checkout for building. Runs git clean -fxd, configures once, and runs make for each commit. Incompatible with parallel processing (-j > 1).'

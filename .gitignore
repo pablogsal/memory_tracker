@@ -29,6 +29,7 @@ ENV/
 env/
 .env
 .env.*
+!.env.example
 pip-log.txt
 pip-delete-this-directory.txt
 .tox/

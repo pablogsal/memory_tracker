@@ -7,6 +7,8 @@ from typing import Dict, Any
 import tempfile
 import git
 
+import requests
+
 logger = logging.getLogger(__name__)
 
 def get_sysconfig_info(python_path: Path, commit: git.Commit) -> Dict[str, Any]:
@@ -122,8 +124,9 @@ def run_benchmarks(venv_dir: Path, output_dir: Path, commit: git.Commit) -> None
             try:
                 result = subprocess.run([
                     str(memray_path), 'run',
+                    "--native", "--trace-python-allocators",
                     '--output', str(memray_output),
-                    str(dest_file)
+                    str(dest_file), 
                 ], capture_output=True, check=True)
                 
                 if result.stdout:
@@ -175,7 +178,6 @@ def run_benchmarks(venv_dir: Path, output_dir: Path, commit: git.Commit) -> None
 def list_binaries(server_url: str = "http://localhost:8000") -> list:
     """List all available binaries from the server."""
     try:
-        import requests
         logger.info(f"Fetching available binaries from {server_url}")
         response = requests.get(f"{server_url}/api/binaries", timeout=10)
         response.raise_for_status()
@@ -188,7 +190,6 @@ def list_binaries(server_url: str = "http://localhost:8000") -> list:
 def list_environments(server_url: str = "http://localhost:8000") -> list:
     """List all available environments from the server."""
     try:
-        import requests
         logger.info(f"Fetching available environments from {server_url}")
         response = requests.get(f"{server_url}/api/environments", timeout=10)
         response.raise_for_status()
@@ -203,8 +204,6 @@ def validate_binary_and_environment(binary_id: str, environment_id: str, server_
     logger.info(f"Validating binary_id: {binary_id} and environment_id: {environment_id}")
     
     try:
-        import requests
-        
         # Check if binary exists
         logger.debug(f"Checking if binary '{binary_id}' exists")
         binary_response = requests.get(f"{server_url}/api/binaries/{binary_id}", timeout=10)
@@ -279,7 +278,6 @@ def upload_results_to_server(output_dir: Path, binary_id: str, environment_id: s
     
     # Upload to server
     try:
-        import requests
         response = requests.post(f"{server_url}/api/upload-run", json=upload_data, headers=headers, timeout=30)
         response.raise_for_status()
         

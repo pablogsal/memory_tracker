@@ -52,6 +52,9 @@ class Binary(Base):
     description = Column(
         Text, nullable=True
     )  # Description of what this binary configuration does
+    color = Column(String(7), nullable=True, default="#8b5cf6")  # Hex color code
+    icon = Column(String(50), nullable=True, default="server")  # Lucide icon name
+    display_order = Column(Integer, nullable=True, default=0)  # Order for display
 
     runs = relationship("Run", back_populates="binary")
 
@@ -146,11 +149,50 @@ class AuthToken(Base):
     )  # SHA-256 hex = 64 chars
     name = Column(String(255), nullable=False)  # Human-readable name for the token
     description = Column(Text, nullable=True)  # Optional description
-    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(UTC))
+    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(UTC).replace(tzinfo=None))
     last_used = Column(DateTime, nullable=True)  # Track when token was last used
     is_active = Column(Boolean, nullable=False, default=True)  # Allow disabling tokens
 
     __table_args__ = (
         Index("idx_auth_tokens_token", "token"),
         Index("idx_auth_tokens_active", "is_active"),
+    )
+
+
+class AdminUser(Base):
+    __tablename__ = "admin_users"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    github_username = Column(String(255), unique=True, nullable=False, index=True)
+    github_user_id = Column(Integer, nullable=True)  # Optional, for reference
+    added_by = Column(String(255), nullable=False)  # Who added this admin
+    added_at = Column(DateTime, nullable=False, default=lambda: datetime.now(UTC).replace(tzinfo=None))
+    is_active = Column(Boolean, nullable=False, default=True)
+    notes = Column(Text, nullable=True)  # Optional notes about this admin
+
+    __table_args__ = (
+        Index("idx_admin_users_username", "github_username"),
+        Index("idx_admin_users_active", "is_active"),
+    )
+
+
+class AdminSession(Base):
+    __tablename__ = "admin_sessions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    session_token = Column(String(64), unique=True, nullable=False, index=True)
+    github_user_id = Column(Integer, nullable=False)
+    github_username = Column(String(255), nullable=False)
+    github_name = Column(String(255), nullable=True)
+    github_email = Column(String(255), nullable=True)
+    github_avatar_url = Column(String(500), nullable=True)
+    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(UTC).replace(tzinfo=None))
+    expires_at = Column(DateTime, nullable=False)
+    is_active = Column(Boolean, nullable=False, default=True)
+
+    __table_args__ = (
+        Index("idx_admin_sessions_token", "session_token"),
+        Index("idx_admin_sessions_github_user", "github_user_id"),
+        Index("idx_admin_sessions_active", "is_active"),
+        Index("idx_admin_sessions_expires", "expires_at"),
     )

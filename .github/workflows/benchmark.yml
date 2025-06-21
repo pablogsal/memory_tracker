@@ -1,0 +1,173 @@
+name: Memory Tracker Benchmark
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit_range:
+        description: 'Commit range to benchmark (e.g., HEAD~10..HEAD)'
+        required: true
+        default: 'HEAD~5..HEAD'
+      binary_id:
+        description: 'Binary ID to use for benchmarking'
+        required: true
+        default: 'default'
+      environment_id:
+        description: 'Environment ID'
+        required: true
+        default: 'linux-x86_64'
+      server_url:
+        description: 'Memory tracker server URL'
+        required: false
+        default: 'https://memory.python.org'
+      parallel_jobs:
+        description: 'Number of parallel jobs'
+        required: false
+        default: '2'
+      batch_size:
+        description: 'Batch size for processing'
+        required: false
+        default: '1'
+      cpython_repo:
+        description: 'CPython repository URL'
+        required: false
+        default: 'https://github.com/python/cpython.git'
+      configure_flags:
+        description: 'Configure flags for CPython build'
+        required: false
+        default: '--enable-optimizations'
+      make_flags:
+        description: 'Make flags for CPython build'
+        required: false
+        default: '-j4'
+      output_dir:
+        description: 'Directory to store benchmark results'
+        required: false
+        default: './benchmark_results'
+      force_overwrite:
+        description: 'Force overwrite existing output directories'
+        required: false
+        type: boolean
+        default: false
+      local_checkout:
+        description: 'Use local checkout mode (incompatible with parallel jobs > 1)'
+        required: false
+        type: boolean
+        default: false
+      verbose_level:
+        description: 'Verbosity level (1=INFO, 2=DEBUG, 3=DEBUG+output)'
+        required: false
+        type: choice
+        options:
+          - '1'
+          - '2'
+          - '3'
+        default: '2'
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout memory tracker
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        
+    - name: Clone CPython repository
+      run: |
+        git clone ${{ github.event.inputs.cpython_repo }} cpython
+        cd cpython
+        git fetch --depth=50
+        
+    - name: Install memory tracker worker
+      run: |
+        cd worker
+        pip install -e .
+        
+    - name: Install CPython build dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          build-essential \
+          libssl-dev \
+          zlib1g-dev \
+          libbz2-dev \
+          libreadline-dev \
+          libsqlite3-dev \
+          wget \
+          curl \
+          llvm \
+          libncurses5-dev \
+          libncursesw5-dev \
+          xz-utils \
+          tk-dev \
+          libffi-dev \
+          liblzma-dev \
+          python3-openssl \
+          git
+          
+    - name: Validate inputs
+      run: |
+        if [ "${{ github.event.inputs.local_checkout }}" = "true" ] && [ "${{ github.event.inputs.parallel_jobs }}" != "1" ]; then
+          echo "Error: local_checkout mode is incompatible with parallel_jobs > 1"
+          exit 1
+        fi
+
+    - name: Run memory benchmarks
+      env:
+        MEMORY_TRACKER_TOKEN: ${{ secrets.MEMORY_TRACKER_TOKEN }}
+      run: |
+        # Build verbose flags
+        VERBOSE_FLAGS=""
+        case "${{ github.event.inputs.verbose_level }}" in
+          "1") VERBOSE_FLAGS="-v" ;;
+          "2") VERBOSE_FLAGS="-vv" ;;
+          "3") VERBOSE_FLAGS="-vvv" ;;
+        esac
+        
+        # Build command with all options
+        CMD="memory-tracker benchmark ./cpython ${{ github.event.inputs.commit_range }}"
+        CMD="$CMD --binary-id ${{ github.event.inputs.binary_id }}"
+        CMD="$CMD --environment-id ${{ github.event.inputs.environment_id }}"
+        CMD="$CMD --api-base ${{ github.event.inputs.server_url }}"
+        CMD="$CMD --configure-flags '${{ github.event.inputs.configure_flags }}'"
+        CMD="$CMD --make-flags '${{ github.event.inputs.make_flags }}'"
+        CMD="$CMD --output-dir ${{ github.event.inputs.output_dir }}"
+        CMD="$CMD -j ${{ github.event.inputs.parallel_jobs }}"
+        CMD="$CMD -b ${{ github.event.inputs.batch_size }}"
+        
+        if [ "${{ github.event.inputs.force_overwrite }}" = "true" ]; then
+          CMD="$CMD --force"
+        fi
+        
+        if [ "${{ github.event.inputs.local_checkout }}" = "true" ]; then
+          CMD="$CMD --local-checkout"
+        fi
+        
+        if [ -n "$VERBOSE_FLAGS" ]; then
+          CMD="$CMD $VERBOSE_FLAGS"
+        fi
+        
+        echo "Running: $CMD"
+        eval $CMD
+          
+    - name: Upload benchmark results (if failed)
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: benchmark-logs
+        path: |
+          *.log
+          ${{ github.event.inputs.output_dir }}/
+        retention-days: 7
+        
+    - name: Upload benchmark results (on success)
+      if: success()
+      uses: actions/upload-artifact@v4
+      with:
+        name: benchmark-results
+        path: ${{ github.event.inputs.output_dir }}/
+        retention-days: 30
