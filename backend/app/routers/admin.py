@@ -168,12 +168,18 @@ async def get_current_admin(
     admin_session: AdminSession = Depends(require_admin_auth),
 ):
     """Get current admin user info."""
-    return {
+    print(f"🔄 GET_CURRENT_ADMIN: Endpoint called")
+    print(f"✅ GET_CURRENT_ADMIN: Authentication successful, user: {admin_session.github_username}")
+    
+    result = {
         "username": admin_session.github_username,
         "name": admin_session.github_name,
         "email": admin_session.github_email,
         "avatar_url": admin_session.github_avatar_url,
     }
+    
+    print(f"✅ GET_CURRENT_ADMIN: Returning user data for: {admin_session.github_username}")
+    return result
 
 
 # Binaries Management
