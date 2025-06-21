@@ -73,6 +73,7 @@ async def initiate_github_auth():
 async def github_auth_callback(
     code: str,
     state: str,
+    request: Request,
     response: Response,
     db: AsyncSession = Depends(get_database),
 ):
@@ -120,15 +121,22 @@ async def github_auth_callback(
         
         # Set secure cookie
         logger.info(f"🔄 GITHUB_AUTH_CALLBACK: Setting admin_session cookie...")
+        
+        # Determine if we're using HTTPS
+        is_https = request.url.scheme == "https"
+        logger.info(f"🔄 GITHUB_AUTH_CALLBACK: Request scheme: {request.url.scheme}, using secure cookie: {is_https}")
+        
         response.set_cookie(
             key="admin_session",
             value=session_token,
             httponly=True,
-            secure=True,
+            secure=is_https,  # Only use secure cookies on HTTPS
             samesite="lax",
             max_age=24 * 60 * 60,  # 24 hours
+            domain=None,  # Let the browser handle the domain
+            path="/",  # Make cookie available for all paths
         )
-        logger.info(f"✅ GITHUB_AUTH_CALLBACK: Cookie set successfully")
+        logger.info(f"✅ GITHUB_AUTH_CALLBACK: Cookie set successfully with secure={is_https}")
         
         logger.info(f"✅ GITHUB_AUTH_CALLBACK: Auth callback completed successfully for {github_user.login}")
         
