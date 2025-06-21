@@ -13,10 +13,19 @@ const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8000';
 class ApiError extends Error {
   constructor(
     public status: number,
-    message: string
+    message: string,
+    public response?: Response
   ) {
     super(message);
     this.name = 'ApiError';
+  }
+}
+
+// Network error handler
+class NetworkError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'NetworkError';
   }
 }
 
@@ -24,19 +33,58 @@ async function fetchApi<T>(
   endpoint: string,
   options?: RequestInit
 ): Promise<T> {
-  const response = await fetch(`${API_BASE}${endpoint}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...options?.headers,
-    },
-  });
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+    
+    const response = await fetch(`${API_BASE}${endpoint}`, {
+      ...options,
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        ...options?.headers,
+      },
+    });
+    
+    clearTimeout(timeoutId);
 
-  if (!response.ok) {
-    throw new ApiError(response.status, `API error: ${response.statusText}`);
+    if (!response.ok) {
+      let errorMessage = `API error: ${response.statusText}`;
+      
+      // Try to get more detailed error message from response
+      try {
+        const errorData = await response.json();
+        if (errorData.detail) {
+          errorMessage = typeof errorData.detail === 'string' 
+            ? errorData.detail 
+            : errorData.detail.message || errorMessage;
+        }
+      } catch {
+        // If response isn't JSON, fall back to status text
+      }
+      
+      throw new ApiError(response.status, errorMessage, response);
+    }
+
+    return response.json();
+  } catch (error) {
+    if (error instanceof ApiError) {
+      throw error;
+    }
+    
+    // Handle network errors
+    if (error instanceof TypeError && error.message === 'Failed to fetch') {
+      throw new NetworkError('Network connection failed. Please check your internet connection.');
+    }
+    
+    // Handle timeout
+    if (error.name === 'AbortError') {
+      throw new NetworkError('Request timed out. Please try again.');
+    }
+    
+    // Re-throw other errors
+    throw error;
   }
-
-  return response.json();
 }
 
 export const api = {

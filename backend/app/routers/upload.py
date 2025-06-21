@@ -6,7 +6,7 @@ from datetime import datetime
 import logging
 
 from .. import schemas, crud, models
-from ..database import get_database
+from ..database import get_database, transaction_scope
 from ..auth import get_current_token
 
 router = APIRouter(prefix="/api", tags=["upload"])

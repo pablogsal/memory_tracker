@@ -3,8 +3,9 @@ Configuration management for the Memory Tracker API.
 All settings are loaded from environment variables with sensible defaults.
 """
 
-from typing import List, Optional
+from typing import List, Optional, Union
 from pydantic_settings import BaseSettings
+from pydantic import field_validator
 from functools import lru_cache
 
 
@@ -25,16 +26,11 @@ class Settings(BaseSettings):
     database_pool_recycle: int = 3600
     database_echo: bool = False
 
-    # CORS Configuration
-    cors_origins: List[str] = [
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://localhost:9002",
-        "http://127.0.0.1:9002",
-    ]
+    # CORS Configuration  
+    cors_origins: str = ""  # Comma-separated string, will be parsed to list
     cors_allow_credentials: bool = True
-    cors_allow_methods: List[str] = ["*"]
-    cors_allow_headers: List[str] = ["*"]
+    cors_allow_methods: List[str] = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+    cors_allow_headers: List[str] = ["Authorization", "Content-Type", "Accept", "Origin", "X-Requested-With"]
 
     # Pagination Configuration
     default_page_size: int = 100
@@ -59,17 +55,18 @@ class Settings(BaseSettings):
     enable_metrics: bool = True
     enable_health_check_db: bool = True
 
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        case_sensitive = False
+    model_config = {
+        "env_file": ".env",
+        "env_file_encoding": "utf-8",
+        "case_sensitive": False,
+    }
 
-        # Allow custom parsing of list fields from comma-separated strings
-        @classmethod
-        def parse_env_var(cls, field_name: str, raw_val: str):
-            if field_name == "cors_origins":
-                return [origin.strip() for origin in raw_val.split(",")]
-            return raw_val
+    @property
+    def cors_origins_list(self) -> List[str]:
+        """Parse CORS origins string into a list."""
+        if not self.cors_origins.strip():
+            return []
+        return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
 
 
 @lru_cache()

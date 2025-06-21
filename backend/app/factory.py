@@ -25,13 +25,20 @@ def create_app(settings=None) -> FastAPI:
     app.state.logging_manager = LoggingManager(settings)
     
     # Configure CORS
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=settings.cors_origins,
-        allow_credentials=settings.cors_allow_credentials,
-        allow_methods=settings.cors_allow_methods,
-        allow_headers=settings.cors_allow_headers,
-    )
+    cors_origins_list = settings.cors_origins_list
+    if cors_origins_list:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=cors_origins_list,
+            allow_credentials=settings.cors_allow_credentials,
+            allow_methods=settings.cors_allow_methods,
+            allow_headers=settings.cors_allow_headers,
+        )
+        logger = get_logger("api.cors")
+        logger.info(f"CORS configured with origins: {cors_origins_list}")
+    else:
+        logger = get_logger("api.cors")
+        logger.warning("No CORS origins configured - all origins will be blocked")
     
     # Add request logging middleware
     @app.middleware("http")

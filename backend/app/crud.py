@@ -404,7 +404,7 @@ async def create_auth_token(
 ) -> models.AuthToken:
     """Create a new auth token."""
     db_token = models.AuthToken(
-        token=token, name=name, description=description, created_at=datetime.utcnow()
+        token=token, name=name, description=description, created_at=datetime.now(UTC)
     )
     db.add(db_token)
     await db.commit()
@@ -419,7 +419,7 @@ async def update_token_last_used(db: AsyncSession, token: str) -> None:
     )
     auth_token = result.scalars().first()
     if auth_token:
-        auth_token.last_used = datetime.utcnow()
+        auth_token.last_used = datetime.now(UTC)
         await db.commit()
 
 

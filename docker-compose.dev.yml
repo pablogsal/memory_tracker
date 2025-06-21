@@ -24,6 +24,7 @@ services:
       dockerfile: Dockerfile.dev
     environment:
       DATABASE_URL: postgresql+asyncpg://memory_tracker_user:memory_tracker_password@db:5432/memory_tracker
+      CORS_ORIGINS: http://localhost:9002,http://frontend:9002
     ports:
       - "8000:8000"
     depends_on:

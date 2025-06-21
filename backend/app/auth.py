@@ -9,6 +9,7 @@ import logging
 from . import models, crud
 from .database import get_database
 from .logging_config import get_logger, user_id_var
+from .exceptions import authentication_failed
 
 
 # Security scheme
@@ -40,21 +41,15 @@ async def get_current_token(
 
     if not token:
         logger.warning("Authentication failed: Missing token")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing authentication token",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+        raise authentication_failed("Missing authentication token")
 
     # Look up token in database
     auth_token = await crud.get_auth_token_by_token(db, token)
     if not auth_token:
-        logger.warning(f"Authentication failed: Invalid token (length: {len(token)})")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired token",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+        # Only log token length and first/last 4 characters for security
+        masked_token = f"{token[:4]}...{token[-4:]}" if len(token) > 8 else "***"
+        logger.warning(f"Authentication failed: Invalid token {masked_token} (length: {len(token)})")
+        raise authentication_failed("Invalid or expired token")
 
     # Set user context for logging
     user_id_var.set(auth_token.name)
