@@ -19,49 +19,10 @@ on:
         description: 'Memory tracker server URL'
         required: false
         default: 'https://memory.python.org'
-      parallel_jobs:
-        description: 'Number of parallel jobs'
-        required: false
-        default: '2'
-      batch_size:
-        description: 'Batch size for processing'
-        required: false
-        default: '1'
       cpython_repo:
         description: 'CPython repository URL'
         required: false
         default: 'https://github.com/python/cpython.git'
-      configure_flags:
-        description: 'Configure flags for CPython build'
-        required: false
-        default: '--enable-optimizations'
-      make_flags:
-        description: 'Make flags for CPython build'
-        required: false
-        default: '-j4'
-      output_dir:
-        description: 'Directory to store benchmark results'
-        required: false
-        default: './benchmark_results'
-      force_overwrite:
-        description: 'Force overwrite existing output directories'
-        required: false
-        type: boolean
-        default: false
-      local_checkout:
-        description: 'Use local checkout mode (incompatible with parallel jobs > 1)'
-        required: false
-        type: boolean
-        default: false
-      verbose_level:
-        description: 'Verbosity level (1=INFO, 2=DEBUG, 3=DEBUG+output)'
-        required: false
-        type: choice
-        options:
-          - '1'
-          - '2'
-          - '3'
-        default: '2'
 
 jobs:
   benchmark:
