@@ -48,27 +48,18 @@ jobs:
         cd worker
         pip install -e .
         
-    - name: Install CPython build dependencies
+    - name: Install build dependencies
       run: |
-        sudo apt-get update
+        # Install CPython dependencies using their script
+        cd cpython
+        sudo .github/workflows/posix-deps-apt.sh
+        
+        # Install Memray dependencies  
         sudo apt-get install -y \
-          build-essential \
-          libssl-dev \
-          zlib1g-dev \
-          libbz2-dev \
-          libreadline-dev \
-          libsqlite3-dev \
-          wget \
-          curl \
-          llvm \
-          libncurses5-dev \
-          libncursesw5-dev \
-          xz-utils \
-          tk-dev \
-          libffi-dev \
-          liblzma-dev \
-          python3-openssl \
-          git
+          python3-dev \
+          libdebuginfod-dev \
+          libunwind-dev \
+          liblz4-dev
           
     - name: Run memory benchmarks
       env:
