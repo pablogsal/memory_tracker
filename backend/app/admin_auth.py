@@ -19,40 +19,92 @@ async def create_admin_session(
     db: AsyncSession, github_user: GitHubUser, duration_hours: int = 24
 ) -> str:
     """Create a new admin session for a GitHub user."""
-    session_token = secrets.token_urlsafe(48)
-    expires_at = datetime.now(UTC).replace(tzinfo=None) + timedelta(hours=duration_hours)
+    print(f"🔐 CREATE_ADMIN_SESSION: Starting session creation for user {github_user.login}")
+    print(f"🔐 CREATE_ADMIN_SESSION: GitHub user data - ID: {github_user.id}, login: {github_user.login}")
     
-    admin_session = AdminSession(
-        session_token=session_token,
-        github_user_id=github_user.id,
-        github_username=github_user.login,
-        github_name=github_user.name,
-        github_email=github_user.email,
-        github_avatar_url=github_user.avatar_url,
-        expires_at=expires_at,
-    )
-    
-    db.add(admin_session)
-    await db.commit()
-    await db.refresh(admin_session)
-    
-    return session_token
+    try:
+        session_token = secrets.token_urlsafe(48)
+        expires_at = datetime.now(UTC).replace(tzinfo=None) + timedelta(hours=duration_hours)
+        
+        print(f"🔐 CREATE_ADMIN_SESSION: Generated session token (first 8 chars): {session_token[:8]}")
+        print(f"🔐 CREATE_ADMIN_SESSION: Session expires at: {expires_at}")
+        
+        admin_session = AdminSession(
+            session_token=session_token,
+            github_user_id=github_user.id,
+            github_username=github_user.login,
+            github_name=github_user.name,
+            github_email=github_user.email,
+            github_avatar_url=github_user.avatar_url,
+            expires_at=expires_at,
+        )
+        
+        print(f"🔐 CREATE_ADMIN_SESSION: AdminSession object created successfully")
+        
+        db.add(admin_session)
+        print(f"🔐 CREATE_ADMIN_SESSION: Added to database session, committing...")
+        
+        await db.commit()
+        print(f"🔐 CREATE_ADMIN_SESSION: Database commit successful")
+        
+        await db.refresh(admin_session)
+        print(f"🔐 CREATE_ADMIN_SESSION: Database refresh successful, session ID: {admin_session.id}")
+        
+        return session_token
+        
+    except Exception as e:
+        import traceback
+        print(f"❌ CREATE_ADMIN_SESSION: Error creating admin session: {e}")
+        print(f"❌ CREATE_ADMIN_SESSION: Full traceback: {traceback.format_exc()}")
+        raise
 
 
 async def get_admin_session(
     db: AsyncSession, session_token: str
 ) -> Optional[AdminSession]:
     """Get an active admin session by token."""
-    result = await db.execute(
-        select(AdminSession).where(
+    print(f"🔐 GET_ADMIN_SESSION: Looking up session with token (first 8 chars): {session_token[:8]}")
+    
+    try:
+        current_time = datetime.now(UTC).replace(tzinfo=None)
+        print(f"🔐 GET_ADMIN_SESSION: Current time: {current_time}")
+        
+        query = select(AdminSession).where(
             and_(
                 AdminSession.session_token == session_token,
                 AdminSession.is_active == True,
-                AdminSession.expires_at > datetime.now(UTC).replace(tzinfo=None),
+                AdminSession.expires_at > current_time,
             )
         )
-    )
-    return result.scalars().first()
+        
+        print(f"🔐 GET_ADMIN_SESSION: Executing database query...")
+        result = await db.execute(query)
+        session = result.scalars().first()
+        
+        if session:
+            print(f"🔐 GET_ADMIN_SESSION: Found session - ID: {session.id}, user: {session.github_username}, expires: {session.expires_at}")
+            print(f"🔐 GET_ADMIN_SESSION: Session active: {session.is_active}, expires in future: {session.expires_at > current_time}")
+        else:
+            print(f"🔐 GET_ADMIN_SESSION: No session found for token")
+            
+            # Debug: Check if session exists but is expired/inactive
+            debug_query = select(AdminSession).where(AdminSession.session_token == session_token)
+            debug_result = await db.execute(debug_query)
+            debug_session = debug_result.scalars().first()
+            
+            if debug_session:
+                print(f"🔐 GET_ADMIN_SESSION: DEBUG - Found session but it's filtered out:")
+                print(f"🔐 GET_ADMIN_SESSION: DEBUG - Active: {debug_session.is_active}, Expires: {debug_session.expires_at}, Current: {current_time}")
+            else:
+                print(f"🔐 GET_ADMIN_SESSION: DEBUG - No session exists with this token at all")
+        
+        return session
+        
+    except Exception as e:
+        import traceback
+        print(f"❌ GET_ADMIN_SESSION: Error retrieving admin session: {e}")
+        print(f"❌ GET_ADMIN_SESSION: Full traceback: {traceback.format_exc()}")
+        raise
 
 
 async def invalidate_admin_session(db: AsyncSession, session_token: str) -> None:
@@ -94,7 +146,14 @@ async def require_admin_auth(
     Dependency to require admin authentication.
     Checks for admin session cookie and validates it.
     """
+    print(f"🔐 REQUIRE_ADMIN_AUTH: Starting auth check for {request.url.path}")
+    print(f"🔐 REQUIRE_ADMIN_AUTH: Session token present: {admin_session_token is not None}")
+    
+    if admin_session_token:
+        print(f"🔐 REQUIRE_ADMIN_AUTH: Session token (first 8 chars): {admin_session_token[:8]}")
+    
     if not admin_session_token:
+        print(f"❌ REQUIRE_ADMIN_AUTH: No session token provided")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Admin authentication required",
@@ -102,10 +161,14 @@ async def require_admin_auth(
         )
     
     try:
+        print(f"🔐 REQUIRE_ADMIN_AUTH: Calling get_admin_session...")
         session = await get_admin_session(db, admin_session_token)
+        print(f"🔐 REQUIRE_ADMIN_AUTH: get_admin_session returned: {session is not None}")
     except Exception as e:
-        # Log the database error but don't expose internal details
-        print(f"Database error in admin auth: {e}")
+        # Log the database error with more details
+        import traceback
+        print(f"❌ REQUIRE_ADMIN_AUTH: Database error in admin auth: {e}")
+        print(f"❌ REQUIRE_ADMIN_AUTH: Full traceback: {traceback.format_exc()}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Authentication service unavailable",
@@ -113,11 +176,14 @@ async def require_admin_auth(
         )
     
     if not session:
+        print(f"❌ REQUIRE_ADMIN_AUTH: No valid session found")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired admin session",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    
+    print(f"✅ REQUIRE_ADMIN_AUTH: Authentication successful for user: {session.github_username}")
     
     # Check if user is still an admin (for existing sessions, we need a valid token)
     # Note: This check is disabled for existing sessions as we don't store the access token
