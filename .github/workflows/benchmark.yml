@@ -70,47 +70,23 @@ jobs:
           python3-openssl \
           git
           
-    - name: Validate inputs
-      run: |
-        if [ "${{ github.event.inputs.local_checkout }}" = "true" ] && [ "${{ github.event.inputs.parallel_jobs }}" != "1" ]; then
-          echo "Error: local_checkout mode is incompatible with parallel_jobs > 1"
-          exit 1
-        fi
-
     - name: Run memory benchmarks
       env:
         MEMORY_TRACKER_TOKEN: ${{ secrets.MEMORY_TRACKER_TOKEN }}
       run: |
-        # Build verbose flags
-        VERBOSE_FLAGS=""
-        case "${{ github.event.inputs.verbose_level }}" in
-          "1") VERBOSE_FLAGS="-v" ;;
-          "2") VERBOSE_FLAGS="-vv" ;;
-          "3") VERBOSE_FLAGS="-vvv" ;;
-        esac
-        
-        # Build command with all options
+        # Build command with preconfigured options
         CMD="memory-tracker benchmark ./cpython ${{ github.event.inputs.commit_range }}"
         CMD="$CMD --binary-id ${{ github.event.inputs.binary_id }}"
         CMD="$CMD --environment-id ${{ github.event.inputs.environment_id }}"
         CMD="$CMD --api-base ${{ github.event.inputs.server_url }}"
-        CMD="$CMD --configure-flags '${{ github.event.inputs.configure_flags }}'"
-        CMD="$CMD --make-flags '${{ github.event.inputs.make_flags }}'"
-        CMD="$CMD --output-dir ${{ github.event.inputs.output_dir }}"
-        CMD="$CMD -j ${{ github.event.inputs.parallel_jobs }}"
-        CMD="$CMD -b ${{ github.event.inputs.batch_size }}"
-        
-        if [ "${{ github.event.inputs.force_overwrite }}" = "true" ]; then
-          CMD="$CMD --force"
-        fi
-        
-        if [ "${{ github.event.inputs.local_checkout }}" = "true" ]; then
-          CMD="$CMD --local-checkout"
-        fi
-        
-        if [ -n "$VERBOSE_FLAGS" ]; then
-          CMD="$CMD $VERBOSE_FLAGS"
-        fi
+        CMD="$CMD --configure-flags '--enable-optimizations'"
+        CMD="$CMD --make-flags '-j4'"
+        CMD="$CMD --output-dir './benchmark_results'"
+        CMD="$CMD -j 1"
+        CMD="$CMD -b 1"
+        CMD="$CMD --force"
+        CMD="$CMD --local-checkout"
+        CMD="$CMD -vv"
         
         echo "Running: $CMD"
         eval $CMD
@@ -122,7 +98,7 @@ jobs:
         name: benchmark-logs
         path: |
           *.log
-          ${{ github.event.inputs.output_dir }}/
+          ./benchmark_results/
         retention-days: 7
         
     - name: Upload benchmark results (on success)
@@ -130,5 +106,5 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: benchmark-results
-        path: ${{ github.event.inputs.output_dir }}/
+        path: ./benchmark_results/
         retention-days: 30
