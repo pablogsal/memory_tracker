@@ -73,8 +73,6 @@ jobs:
         CMD="$CMD --configure-flags '--enable-optimizations'"
         CMD="$CMD --make-flags '-j4'"
         CMD="$CMD --output-dir './benchmark_results'"
-        CMD="$CMD -j 1"
-        CMD="$CMD -b 1"
         CMD="$CMD --force"
         CMD="$CMD --local-checkout"
         CMD="$CMD -vv"
