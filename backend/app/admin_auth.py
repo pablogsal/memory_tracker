@@ -101,7 +101,17 @@ async def require_admin_auth(
             headers={"WWW-Authenticate": "Bearer"},
         )
     
-    session = await get_admin_session(db, admin_session_token)
+    try:
+        session = await get_admin_session(db, admin_session_token)
+    except Exception as e:
+        # Log the database error but don't expose internal details
+        print(f"Database error in admin auth: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication service unavailable",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
     if not session:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
