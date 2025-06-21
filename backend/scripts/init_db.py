@@ -59,7 +59,6 @@ async def init_database():
     try:
         # Import models to ensure they're registered
         from app.models import AdminUser, AdminSession, AuthToken, Commit, Binary, Environment, Run, BenchmarkResult
-        print(f"📋 Models imported: {[cls.__tablename__ for cls in [AdminUser, AdminSession, AuthToken, Commit, Binary, Environment, Run, BenchmarkResult]]}")
         
         await create_tables()
         print("✅ Database tables created successfully!")
@@ -70,9 +69,7 @@ async def init_database():
             return False
             
     except Exception as e:
-        import traceback
         print(f"❌ Error creating database tables: {e}")
-        print(f"Full traceback: {traceback.format_exc()}")
         return False
 
     return True
@@ -85,7 +82,6 @@ async def reset_database():
     try:
         # Import models to ensure they're registered
         from app.models import AdminUser, AdminSession, AuthToken, Commit, Binary, Environment, Run, BenchmarkResult
-        print(f"📋 Models imported: {[cls.__tablename__ for cls in [AdminUser, AdminSession, AuthToken, Commit, Binary, Environment, Run, BenchmarkResult]]}")
         
         await drop_tables()
         print("🗑️  Existing tables dropped")
@@ -99,9 +95,7 @@ async def reset_database():
             return False
             
     except Exception as e:
-        import traceback
         print(f"❌ Error resetting database: {e}")
-        print(f"Full traceback: {traceback.format_exc()}")
         return False
 
     return True
